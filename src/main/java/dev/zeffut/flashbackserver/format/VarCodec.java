@@ -6,6 +6,11 @@ import java.nio.charset.StandardCharsets;
 public final class VarCodec {
     private VarCodec() {}
 
+    /**
+     * Writes an unsigned LEB128 VarInt. Negative values are encoded as 5 bytes
+     * (via the unsigned shift) and round-trip correctly through {@link #readVarInt}.
+     * Do not change {@code >>>} to {@code >>} — that would break the negative-value contract.
+     */
     public static void writeVarInt(DataOutput out, int value) throws IOException {
         while ((value & ~0x7F) != 0) {
             out.writeByte((value & 0x7F) | 0x80);
