@@ -1,6 +1,7 @@
 plugins {
     java
     id("io.papermc.paperweight.userdev") version "2.0.0-beta.18"
+    id("xyz.jpenilla.run-paper") version "3.0.2"
 }
 
 java {
@@ -24,4 +25,8 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+tasks.runServer {
+    minecraftVersion("1.21.4")
 }
