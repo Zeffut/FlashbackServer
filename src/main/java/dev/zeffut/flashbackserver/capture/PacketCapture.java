@@ -96,4 +96,19 @@ public final class PacketCapture {
             }
         });
     }
+
+    /** Removes ONLY the raw handler ({@code flashback_capture_raw}); leaves the counter handler intact. */
+    public static void ejectRaw(Player player) {
+        Channel channel;
+        try {
+            channel = ChannelAccess.of(player);
+        } catch (RuntimeException e) {
+            return; // player already gone / channel unavailable
+        }
+        channel.eventLoop().execute(() -> {
+            if (channel.pipeline().get(RAW_HANDLER_NAME) != null) {
+                channel.pipeline().remove(RAW_HANDLER_NAME);
+            }
+        });
+    }
 }

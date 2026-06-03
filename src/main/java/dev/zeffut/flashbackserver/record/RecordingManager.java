@@ -2,12 +2,19 @@ package dev.zeffut.flashbackserver.record;
 
 import dev.zeffut.flashbackserver.capture.PacketCapture;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.Plugin;
 import java.nio.file.Path;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
-public final class RecordingManager {
+public final class RecordingManager implements Listener {
+    private static final Logger LOG = Logger.getLogger("FlashbackServer");
+
     private final Plugin plugin;
     private final Path outputDir;
     private final ConcurrentHashMap<UUID, Active> active = new ConcurrentHashMap<>();
@@ -34,11 +41,22 @@ public final class RecordingManager {
     public Path stop(Player player) throws Exception {
         Active a = active.remove(player.getUniqueId());
         if (a == null) return null;
-        PacketCapture.eject(player);
+        PacketCapture.ejectRaw(player);
         a.clock().stop();
         a.recorder().stop();
         return a.output();
     }
 
     public boolean isRecording(Player player) { return active.containsKey(player.getUniqueId()); }
+
+    @EventHandler
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        Player player = event.getPlayer();
+        if (!isRecording(player)) return;
+        try {
+            stop(player);
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "Failed to stop recording for " + player.getName() + " on quit", e);
+        }
+    }
 }

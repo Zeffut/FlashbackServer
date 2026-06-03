@@ -4,3 +4,7 @@ main: dev.zeffut.flashbackserver.FlashbackServerPlugin
 api-version: '1.21'
 authors: [Zeffut]
 description: Server-side Flashback replay recording.
+commands:
+  replay:
+    description: Control server-side Flashback recordings.
+    usage: /replay <start|stop> players <player>

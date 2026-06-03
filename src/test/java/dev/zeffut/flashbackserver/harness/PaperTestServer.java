@@ -104,11 +104,17 @@ public final class PaperTestServer implements AutoCloseable {
         return max;
     }
 
-    @Override public void close() throws Exception {
-        try (var w = new OutputStreamWriter(process.getOutputStream())) {
-            w.write("stop\n");
-            w.flush();
+    /** Sends a console command to the running server by writing to its stdin. */
+    public void sendCommand(String command) {
+        try {
+            OutputStream os = process.getOutputStream();
+            os.write((command + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            os.flush();
         } catch (IOException ignored) {}
+    }
+
+    @Override public void close() throws Exception {
+        sendCommand("stop");
         if (!process.waitFor(60, TimeUnit.SECONDS)) process.destroyForcibly();
     }
 }
