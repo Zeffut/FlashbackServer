@@ -2,11 +2,14 @@ package dev.zeffut.flashbackserver.harness;
 
 import java.io.*;
 import java.nio.file.*;
+import java.util.List;
 import java.util.concurrent.*;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public final class PaperTestServer implements AutoCloseable {
     private final Process process;
     private final Path runDir;
+    private final List<String> logLines = new CopyOnWriteArrayList<>();
 
     private PaperTestServer(Process process, Path runDir) {
         this.process = process;
@@ -35,11 +38,13 @@ public final class PaperTestServer implements AutoCloseable {
         Process process = pb.start();
 
         CountDownLatch ready = new CountDownLatch(1);
+        PaperTestServer server = new PaperTestServer(process, runDir);
         Thread reader = new Thread(() -> {
             try (var br = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
                 String line;
                 while ((line = br.readLine()) != null) {
                     System.out.println("[paper] " + line);
+                    server.logLines.add(line);
                     if (line.contains("Done (")) ready.countDown();
                 }
             } catch (IOException ignored) {}
@@ -51,10 +56,53 @@ public final class PaperTestServer implements AutoCloseable {
             process.destroyForcibly();
             throw new IllegalStateException("Paper server did not become ready within 180s");
         }
-        return new PaperTestServer(process, runDir);
+        return server;
     }
 
     public Path runDir() { return runDir; }
+
+    /**
+     * Polls accumulated server log lines until one contains {@code substring} or the timeout
+     * elapses. Returns {@code true} if found, {@code false} on timeout.
+     */
+    public boolean awaitLogLine(String substring, long timeoutSeconds) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + timeoutSeconds * 1000L;
+        while (System.currentTimeMillis() < deadline) {
+            for (String line : logLines) {
+                if (line.contains(substring)) return true;
+            }
+            Thread.sleep(100);
+        }
+        // one final check after deadline
+        for (String line : logLines) {
+            if (line.contains(substring)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Scans accumulated log lines for any containing {@code "[capture] "}, parses the integer
+     * after {@code "packets="}, and returns the maximum found (0 if none).
+     */
+    public long maxCapturedCount() {
+        long max = 0;
+        for (String line : logLines) {
+            if (!line.contains("[capture] ")) continue;
+            int idx = line.indexOf("packets=");
+            if (idx < 0) continue;
+            try {
+                String rest = line.substring(idx + "packets=".length()).trim();
+                // take only leading digits
+                int end = 0;
+                while (end < rest.length() && Character.isDigit(rest.charAt(end))) end++;
+                if (end > 0) {
+                    long val = Long.parseLong(rest.substring(0, end));
+                    if (val > max) max = val;
+                }
+            } catch (NumberFormatException ignored) {}
+        }
+        return max;
+    }
 
     @Override public void close() throws Exception {
         try (var w = new OutputStreamWriter(process.getOutputStream())) {
