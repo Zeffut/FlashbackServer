@@ -2,6 +2,7 @@ package dev.zeffut.flashbackserver.harness;
 
 import org.geysermc.mcprotocollib.network.ClientSession;
 import org.geysermc.mcprotocollib.network.Session;
+import org.geysermc.mcprotocollib.network.event.session.DisconnectedEvent;
 import org.geysermc.mcprotocollib.network.event.session.SessionAdapter;
 import org.geysermc.mcprotocollib.network.factory.ClientNetworkSessionFactory;
 import org.geysermc.mcprotocollib.network.packet.Packet;
@@ -15,6 +16,7 @@ import java.util.concurrent.TimeUnit;
 public final class BotClient implements AutoCloseable {
     private final ClientSession session;
     private final CountDownLatch joined = new CountDownLatch(1);
+    private volatile String disconnectReason;
 
     private BotClient(ClientSession session) {
         this.session = session;
@@ -34,13 +36,29 @@ public final class BotClient implements AutoCloseable {
                     bot.joined.countDown();
                 }
             }
+
+            @Override
+            public void disconnected(DisconnectedEvent event) {
+                // Surface failures (server down, kicked) immediately instead of burning the
+                // full awaitJoin timeout with a cryptic assertion.
+                bot.disconnectReason = String.valueOf(event.getReason());
+                bot.joined.countDown();
+            }
         });
         session.connect();
         return bot;
     }
 
+    /**
+     * Blocks until the bot joins the game. Throws if the bot was disconnected before joining,
+     * with the disconnect reason for diagnostics. Returns false only on timeout.
+     */
     public boolean awaitJoin(long timeoutSeconds) throws InterruptedException {
-        return joined.await(timeoutSeconds, TimeUnit.SECONDS);
+        boolean signalled = joined.await(timeoutSeconds, TimeUnit.SECONDS);
+        if (disconnectReason != null) {
+            throw new IllegalStateException("Bot disconnected before joining: " + disconnectReason);
+        }
+        return signalled;
     }
 
     @Override
