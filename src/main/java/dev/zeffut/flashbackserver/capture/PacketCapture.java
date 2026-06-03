@@ -6,8 +6,13 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
 import org.bukkit.entity.Player;
 
+import java.util.NoSuchElementException;
+import java.util.logging.Logger;
+
 public final class PacketCapture {
     private static final String HANDLER_NAME = "flashback_capture";
+    private static final String ENCODER = "encoder";
+    private static final Logger LOG = Logger.getLogger("FlashbackServer");
 
     private PacketCapture() {}
 
@@ -16,17 +21,24 @@ public final class PacketCapture {
         Channel channel = ChannelAccess.of(player);
         channel.eventLoop().execute(() -> {
             if (channel.pipeline().get(HANDLER_NAME) != null) return; // idempotent
-            channel.pipeline().addBefore("encoder", HANDLER_NAME, new ChannelDuplexHandler() {
-                @Override
-                public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
-                    try {
-                        sink.accept(player, new CapturedPacket(msg.getClass().getName(), null));
-                    } catch (Throwable ignored) {
-                        // capture must never break the connection
+            try {
+                channel.pipeline().addBefore(ENCODER, HANDLER_NAME, new ChannelDuplexHandler() {
+                    @Override
+                    public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+                        try {
+                            sink.accept(player, new CapturedPacket(msg.getClass().getName(), null));
+                        } catch (Throwable ignored) {
+                            // capture must never break the connection
+                        }
+                        super.write(ctx, msg, promise);
                     }
-                    super.write(ctx, msg, promise);
-                }
-            });
+                });
+            } catch (NoSuchElementException e) {
+                // No '"encoder"' handler — likely a Paper pipeline change. Surface it loudly:
+                // capture is silently inactive otherwise, which is hard to diagnose.
+                LOG.warning("Could not install packet capture for " + player.getName()
+                    + ": no '" + ENCODER + "' handler in the Netty pipeline (Paper internals changed?).");
+            }
         });
     }
 
