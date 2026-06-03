@@ -1,6 +1,7 @@
 package dev.zeffut.flashbackserver.format;
 
 import org.junit.jupiter.api.Test;
+import java.io.*;
 import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -27,5 +28,23 @@ class ChunkCodecTest {
     void rejectsBadMagic() {
         byte[] garbage = new byte[]{0, 0, 0, 0, 0};
         assertThrows(Exception.class, () -> ChunkReader.read(garbage));
+    }
+
+    @Test
+    void rejectsUnknownActionId() throws Exception {
+        // Hand-craft a chunk whose action references a registry id that was never declared.
+        var out = new ByteArrayOutputStream();
+        var dos = new DataOutputStream(out);
+        dos.writeInt(ChunkWriter.MAGIC);
+        VarCodec.writeVarInt(dos, 1);                 // registry count = 1
+        VarCodec.writeVarInt(dos, 0);                 // index 0
+        VarCodec.writeString(dos, "flashback:game_packet");
+        dos.writeInt(0);                              // empty snapshot
+        VarCodec.writeVarInt(dos, 5);                 // action id 5 — not in the registry
+        dos.writeInt(0);                              // empty payload
+        dos.flush();
+
+        IOException ex = assertThrows(IOException.class, () -> ChunkReader.read(out.toByteArray()));
+        assertTrue(ex.getMessage().contains("Unknown action id"), ex.getMessage());
     }
 }
