@@ -101,6 +101,109 @@ Top-level keys produced by `FlashbackMeta.toJson()`:
 
 ---
 
+---
+
+## Game-packet action (for our writer)
+
+> Documented by clean-room reading of `AsyncReplaySaver.java` and `ActionGamePacket.java`
+> (github.com/Moulberry/Flashback, master, 2026-06-03). No code was copied.
+
+### Identifier
+
+```
+flashback:action/game_packet
+```
+
+For packets sent during the configuration phase (before the player transitions to PLAY), the
+identifier is `flashback:action/configuration_packet` instead. Our server-side writer operates
+entirely in PLAY phase, so we use `flashback:action/game_packet` exclusively.
+
+### Payload layout
+
+The payload is the Minecraft game protocol's **encoded packet bytes**, produced by calling the
+clientbound PLAY `StreamCodec.encode(buf, packet)` directly into the action payload buffer. No
+additional length prefix, phase byte, or other framing is added — the encoded bytes (varint packet
+id followed by the packet fields) are written verbatim.
+
+In action-record terms (see [Action record format](#action-record-format)):
+
+```
+[varint  action_id   ]   — index of "flashback:action/game_packet" in this chunk's registry
+[int32   payload_size]   — number of bytes that follow
+[bytes   payload     ]   — PLAY StreamCodec output: varint packet-id + packet field bytes
+```
+
+Internally, Flashback calls:
+1. `writer.startAction(ActionGamePacket.INSTANCE)` — writes action_id varint + placeholder int32 size
+2. `gamePacketCodec.encode(writer.friendlyByteBuf(), packet)` — writes id+fields into the buf
+3. `writer.finishAction(ActionGamePacket.INSTANCE)` — back-patches the real payload_size int32
+
+`ClientboundLevelChunkWithLightPacket` is an exception: chunk packets are de-duplicated into
+`level_chunk_caches/` files and referenced by index via `flashback:action/level_chunk_cached`
+instead of being inlined here.
+
+`ClientboundCustomPayloadPacket` uses the same action but is pre-encoded into a temporary buffer
+first (to catch encoding errors), then the pre-encoded bytes are written into the action payload.
+
+### Relation to snapshot
+
+The snapshot block (the initial world-state section at the start of each chunk file) uses the
+exact same action-record encoding. The snapshot contains a set of synthetic packets (registry
+data, entity states, player position, etc.) reconstructed from the live game state at recording
+start/chunk boundary. The live action stream that follows uses the same format for incremental
+packets.
+
+---
+
+## Capture point (confirmed)
+
+**Capture point:** `channel.pipeline().addBefore("encoder", "probe")` on the Paper 1.21.5 Netty
+pipeline, in the outbound write direction (TAIL → HEAD), places the probe handler after `encoder`
+has converted the `Packet<?>` object into a `ByteBuf`. This was confirmed empirically by the
+`RawCaptureSpikeIT` integration test (2026-06-03).
+
+### Paper 1.21.5 pipeline (outbound write order, TAIL → HEAD)
+
+```
+packet_handler -> hackfix -> unbundler -> encoder
+  -> [capture point: addBefore("encoder")] -> compress -> prepender
+  -> FlushConsolidationHandler -> timeout -> ...
+```
+
+At the capture point, messages are `io.netty.buffer.PooledUnsafeDirectByteBuf` (ByteBuf), not
+`Packet<?>` objects. The bytes are **uncompressed** (the `compress` handler has not yet run) and
+**unframed** (the `prepender` length-prefix handler has not yet run). The content is:
+
+```
+[varint  packet_id  ]   — Minecraft PLAY clientbound packet id
+[bytes   fields     ]   — packet-specific encoded fields
+```
+
+No Minecraft network-level length prefix, no compression header, no cipher (cipher runs at head).
+
+### Observed examples (first 6 messages on SpikeBot join, port 25620)
+
+| # | Class | bytes | leading varint (packet id) |
+|---|-------|-------|---------------------------|
+| 1 | `PooledUnsafeDirectByteBuf` | 283 | 114 (0x72) |
+| 2 | `PooledUnsafeDirectByteBuf` | 36  | 63  (0x3F) |
+| 3 | `PooledUnsafeDirectByteBuf` | 2   | 88  (0x58) |
+| 4 | `PooledUnsafeDirectByteBuf` | 2   | 104 (0x68) |
+| 5 | `PooledUnsafeDirectByteBuf` | 11  | 87  (0x57) |
+| 6 | `PooledUnsafeDirectByteBuf` | 40  | 37  (0x25) |
+
+All varint ids are plausible 1.21.5 PLAY clientbound packet IDs (small positive integers, < 128,
+so each varint is 1 byte). Sizes range from 2 to 283 bytes; none showed evidence of compression
+(the `compress` handler had not yet run at this point). The first packet at 283 bytes would exceed
+the default compression threshold of 256 bytes but is still in raw uncompressed form here, which
+confirms the capture point is upstream of compression.
+
+**Conclusion:** `addBefore("encoder")` is the correct capture point for obtaining raw, uncompressed,
+unframed `varint_id + payload` bytes suitable for writing directly as `flashback:action/game_packet`
+payload in the Flashback chunk stream.
+
+---
+
 ## Open questions / unconfirmed
 
 - **`writeIdentifier` wire encoding:** The Minecraft `FriendlyByteBuf.writeIdentifier()` call is confirmed, but the exact byte-level wire format (e.g. whether it uses a two-part varint length scheme or a single string) depends on the Minecraft version's NIO implementation. Our writer must match whatever version the reader expects. Low risk — standard Minecraft codec.

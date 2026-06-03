@@ -36,4 +36,5 @@ test-output/
 # Logs
 *.log
 spike-pipeline.log
+spike-raw.log
 /io/
