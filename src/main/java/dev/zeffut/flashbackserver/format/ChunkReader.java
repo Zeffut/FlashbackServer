@@ -22,13 +22,18 @@ public final class ChunkReader {
         }
 
         int snapshotSize = in.readInt();
+        if (snapshotSize < 0) throw new IOException("Negative snapshot size: " + snapshotSize);
         byte[] snapshot = new byte[snapshotSize];
         in.readFully(snapshot);
 
         List<ReplayAction> actions = new ArrayList<>();
+        // Safe: backed by a ByteArrayInputStream, so available() is the exact remaining
+        // byte count. Revisit if read() is ever changed to accept a generic InputStream
+        // or compressed input, where available() may under-report.
         while (in.available() > 0) {
             int id = VarCodec.readVarInt(in);
             int size = in.readInt();
+            if (size < 0) throw new IOException("Negative payload size: " + size);
             byte[] payload = new byte[size];
             in.readFully(payload);
             String identifier = registry.get(id);

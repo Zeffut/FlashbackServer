@@ -27,7 +27,24 @@ class ChunkCodecTest {
     @Test
     void rejectsBadMagic() {
         byte[] garbage = new byte[]{0, 0, 0, 0, 0};
-        assertThrows(Exception.class, () -> ChunkReader.read(garbage));
+        assertThrows(IOException.class, () -> ChunkReader.read(garbage));
+    }
+
+    @Test
+    void rejectsNegativePayloadSize() throws Exception {
+        var out = new ByteArrayOutputStream();
+        var dos = new DataOutputStream(out);
+        dos.writeInt(ChunkWriter.MAGIC);
+        VarCodec.writeVarInt(dos, 1);                 // registry count = 1
+        VarCodec.writeVarInt(dos, 0);                 // index 0
+        VarCodec.writeString(dos, "flashback:game_packet");
+        dos.writeInt(0);                              // empty snapshot
+        VarCodec.writeVarInt(dos, 0);                 // action id 0
+        dos.writeInt(-1);                             // malicious negative payload size
+        dos.flush();
+
+        IOException ex = assertThrows(IOException.class, () -> ChunkReader.read(out.toByteArray()));
+        assertTrue(ex.getMessage().contains("Negative payload size"), ex.getMessage());
     }
 
     @Test
