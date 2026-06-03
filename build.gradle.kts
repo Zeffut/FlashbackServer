@@ -15,7 +15,7 @@ repositories {
 }
 
 dependencies {
-    paperweight.paperDevBundle("1.21.4-R0.1-SNAPSHOT")
+    paperweight.paperDevBundle("1.21.5-R0.1-SNAPSHOT")
     // Gson is provided by the Paper server at runtime — compile against it but don't bundle it.
     compileOnly("com.google.code.gson:gson:2.11.0")
     testImplementation("com.google.code.gson:gson:2.11.0")
@@ -38,5 +38,5 @@ val integrationTest by tasks.registering(Test::class) {
 }
 
 tasks.runServer {
-    minecraftVersion("1.21.4")
+    minecraftVersion("1.21.5")
 }

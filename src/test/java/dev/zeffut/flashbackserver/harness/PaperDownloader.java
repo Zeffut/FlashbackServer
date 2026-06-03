@@ -7,7 +7,7 @@ import java.net.http.*;
 import java.nio.file.*;
 
 public final class PaperDownloader {
-    private static final String VERSION = "1.21.4";
+    private static final String VERSION = "1.21.5";
     private PaperDownloader() {}
 
     /** Returns the path to a Paper jar, downloading the latest build once if absent. */
