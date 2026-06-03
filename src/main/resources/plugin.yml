@@ -1,0 +1,6 @@
+name: FlashbackServer
+version: '0.1.0-SNAPSHOT'
+main: dev.zeffut.flashbackserver.FlashbackServerPlugin
+api-version: '1.21'
+authors: [Zeffut]
+description: Server-side Flashback replay recording.
