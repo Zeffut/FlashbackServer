@@ -42,4 +42,40 @@ class FlashbackValidatorTest {
         assertFalse(report.valid());
         assertTrue(report.problems().stream().anyMatch(p -> p.contains("c0.flashback")));
     }
+
+    @Test
+    void rejectsTickMismatch(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve("mismatch.flashback");
+        var meta = new FlashbackMeta();
+        meta.totalTicks = 5;
+        meta.chunks.put("c0.flashback", new ChunkMeta(5)); // claims 5 ticks
+        byte[] chunk = ChunkWriter.write(new byte[]{1}, List.of(    // but only 1 next_tick present
+            new ReplayAction("flashback:action/next_tick", new byte[0])));
+        try (var w = FlashbackContainer.create(file)) {
+            w.writeMetadata(meta);
+            w.writeChunk("c0.flashback", chunk);
+        }
+
+        FlashbackValidator.Report report = FlashbackValidator.validate(file);
+        assertFalse(report.valid());
+        assertTrue(report.problems().stream().anyMatch(p -> p.contains("tick mismatch")),
+            report.problems().toString());
+    }
+
+    @Test
+    void rejectsUnreadableContainer(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve("garbage.flashback");
+        Files.write(file, new byte[]{0, 1, 2, 3, 4, 5}); // not a ZIP
+
+        FlashbackValidator.Report report = FlashbackValidator.validate(file);
+        assertFalse(report.valid());
+        assertTrue(report.problems().stream().anyMatch(p -> p.contains("container unreadable")),
+            report.problems().toString());
+    }
+
+    @Test
+    void reportProblemsIsImmutable(@TempDir Path dir) throws Exception {
+        FlashbackValidator.Report report = FlashbackValidator.validate(validReplay(dir));
+        assertThrows(UnsupportedOperationException.class, () -> report.problems().add("tampered"));
+    }
 }

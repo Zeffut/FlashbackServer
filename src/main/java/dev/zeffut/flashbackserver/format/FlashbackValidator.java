@@ -5,6 +5,11 @@ import java.util.*;
 
 public final class FlashbackValidator {
 
+    /**
+     * Validation result. Fields other than {@code problems} are meaningful only when no
+     * container-level failure occurred (on an unreadable container they default to 0).
+     * {@code problems} is an unmodifiable list.
+     */
     public record Report(boolean valid, List<String> problems, int totalTicks, int chunkCount) {}
 
     private FlashbackValidator() {}
@@ -18,14 +23,14 @@ public final class FlashbackValidator {
             Set<String> entries = reader.entryNames();
             if (!entries.contains("metadata.json")) {
                 problems.add("missing metadata.json");
-                return new Report(false, problems, 0, 0);
+                return new Report(false, List.copyOf(problems), 0, 0);
             }
 
             FlashbackMeta meta = reader.readMetadata();
             totalTicks = meta.totalTicks;
             chunkCount = meta.chunks.size();
 
-            int tickSum = 0;
+            long tickSum = 0;
             for (var entry : meta.chunks.entrySet()) {
                 String name = entry.getKey();
                 if (!entries.contains(name)) {
@@ -34,7 +39,7 @@ public final class FlashbackValidator {
                 }
                 try {
                     ChunkReader.Result result = ChunkReader.read(reader.readChunk(name));
-                    int ticks = (int) result.actions().stream()
+                    long ticks = result.actions().stream()
                         .filter(a -> a.identifier().equals("flashback:action/next_tick")).count();
                     if (ticks != entry.getValue().duration) {
                         problems.add("chunk " + name + " tick mismatch: declared "
@@ -52,6 +57,6 @@ public final class FlashbackValidator {
             problems.add("container unreadable: " + e.getMessage());
         }
 
-        return new Report(problems.isEmpty(), problems, totalTicks, chunkCount);
+        return new Report(problems.isEmpty(), List.copyOf(problems), totalTicks, chunkCount);
     }
 }
