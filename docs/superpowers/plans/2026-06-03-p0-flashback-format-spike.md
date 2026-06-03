@@ -105,7 +105,7 @@ Create `docs/format/flashback-format.md` documenting, in our own words:
    - `varint actionId`     — index into the registry
    - `int32 size`
    - `size` bytes payload  — opaque to the container codec
-   The `flashback:next_tick` action (zero-length payload) advances one tick.
+   The `flashback:action/next_tick` action (zero-length payload) advances one tick.
 
 ## Timing
 - Tick-based, 20 ticks/second. No millisecond timestamps.
@@ -253,9 +253,9 @@ class VarCodecTest {
     @Test
     void stringRoundTrips() throws IOException {
         var out = new ByteArrayOutputStream();
-        VarCodec.writeString(new DataOutputStream(out), "flashback:next_tick");
+        VarCodec.writeString(new DataOutputStream(out), "flashback:action/next_tick");
         var in = new DataInputStream(new ByteArrayInputStream(out.toByteArray()));
-        assertEquals("flashback:next_tick", VarCodec.readString(in));
+        assertEquals("flashback:action/next_tick", VarCodec.readString(in));
     }
 }
 ```
@@ -465,7 +465,7 @@ class ChunkCodecTest {
         byte[] snapshot = new byte[]{1, 2, 3, 4};
         var actions = List.of(
             new ReplayAction("flashback:game_packet", new byte[]{10, 20}),
-            new ReplayAction("flashback:next_tick", new byte[0]),
+            new ReplayAction("flashback:action/next_tick", new byte[0]),
             new ReplayAction("flashback:game_packet", new byte[]{30})
         );
 
@@ -474,7 +474,7 @@ class ChunkCodecTest {
 
         assertArrayEquals(snapshot, result.snapshot());
         assertEquals(actions.size(), result.actions().size());
-        assertEquals("flashback:next_tick", result.actions().get(1).identifier());
+        assertEquals("flashback:action/next_tick", result.actions().get(1).identifier());
         assertArrayEquals(new byte[]{30}, result.actions().get(2).payload());
     }
 
@@ -511,10 +511,9 @@ import java.io.*;
 import java.util.*;
 
 public final class ChunkWriter {
-    // Provisional value; round-trip tests pass with any constant. Before finishing this
-    // task, set it to the real value documented in Task 1 (Flashback.java MAGIC) so files
-    // are interop-compatible with the Flashback client.
-    static final int MAGIC = 0xF1A5_8ACC;
+    // Confirmed in Task 1 (docs/format/flashback-format.md) from Flashback.java — the real
+    // MAGIC so files are interop-compatible with the Flashback client.
+    static final int MAGIC = 0xD780_E884;
 
     private ChunkWriter() {}
 
@@ -639,7 +638,7 @@ class FlashbackContainerTest {
         meta.chunks.put("c0.flashback", new ChunkMeta(20));
 
         byte[] chunk = ChunkWriter.write(new byte[]{9},
-            List.of(new ReplayAction("flashback:next_tick", new byte[0])));
+            List.of(new ReplayAction("flashback:action/next_tick", new byte[0])));
 
         try (var writer = FlashbackContainer.create(file)) {
             writer.writeMetadata(meta);
@@ -783,8 +782,8 @@ class FlashbackValidatorTest {
         meta.totalTicks = 2;
         meta.chunks.put("c0.flashback", new ChunkMeta(2));
         byte[] chunk = ChunkWriter.write(new byte[]{1}, List.of(
-            new ReplayAction("flashback:next_tick", new byte[0]),
-            new ReplayAction("flashback:next_tick", new byte[0])));
+            new ReplayAction("flashback:action/next_tick", new byte[0]),
+            new ReplayAction("flashback:action/next_tick", new byte[0])));
         try (var w = FlashbackContainer.create(file)) {
             w.writeMetadata(meta);
             w.writeChunk("c0.flashback", chunk);
@@ -859,7 +858,7 @@ public final class FlashbackValidator {
                 try {
                     ChunkReader.Result result = ChunkReader.read(reader.readChunk(name));
                     int ticks = (int) result.actions().stream()
-                        .filter(a -> a.identifier().equals("flashback:next_tick")).count();
+                        .filter(a -> a.identifier().equals("flashback:action/next_tick")).count();
                     if (ticks != entry.getValue().duration) {
                         problems.add("chunk " + name + " tick mismatch: declared "
                             + entry.getValue().duration + ", found " + ticks);
