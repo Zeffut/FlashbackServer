@@ -21,8 +21,11 @@ public final class FlashbackContainer {
 
         private Writer(Path file) throws IOException {
             this.zip = new ZipOutputStream(Files.newOutputStream(file));
+            // Match the Flashback writer's compression (level 1) — see docs/format/flashback-format.md.
+            this.zip.setLevel(Deflater.BEST_SPEED);
         }
 
+        /** Call exactly once per container — a ZIP must not contain a duplicate metadata.json. */
         public void writeMetadata(FlashbackMeta meta) throws IOException {
             putEntry("metadata.json", meta.toJson().getBytes(StandardCharsets.UTF_8));
         }
