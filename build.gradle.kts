@@ -14,7 +14,8 @@ repositories {
 
 dependencies {
     paperweight.paperDevBundle("1.21.4-R0.1-SNAPSHOT")
-    implementation("com.google.code.gson:gson:2.11.0")
+    compileOnly("com.google.code.gson:gson:2.11.0")
+    testImplementation("com.google.code.gson:gson:2.11.0")
     testImplementation(platform("org.junit:junit-bom:5.11.3"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
