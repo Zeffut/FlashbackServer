@@ -50,8 +50,6 @@ public final class ClipBuffer {
 
     /** Package-private: construct with an explicit tick window (tests). */
     static ClipBuffer ofTicks(int windowTicks) {
-        ClipBuffer b = new ClipBuffer(1); // dummy, overwritten below
-        // We need direct field access — use a dedicated private constructor.
         return new ClipBuffer(windowTicks, false);
     }
 
@@ -167,6 +165,33 @@ public final class ClipBuffer {
             int count = 0;
             for (Segment seg : segments) count += seg.frames().size();
             return count;
+        } finally { lock.unlock(); }
+    }
+
+    /** An atomically-captured clip: snapshot keyframe, stream actions, and tick count, all consistent. */
+    public record ClipData(List<ReplayAction> snapshot, List<ReplayAction> stream, int tickCount) {}
+
+    /**
+     * Captures the snapshot keyframe, the stream actions, and the tick count under a SINGLE lock
+     * acquisition, so a concurrent {@link #setKeyframe} rotation cannot tear them apart (which would
+     * misalign the snapshot with the first emitted frame or the declared tick count). Callers writing
+     * a clip file should use this rather than the three separate accessors.
+     */
+    public ClipData captureClip() {
+        lock.lock();
+        try {
+            List<ReplayAction> snapshot = segments.isEmpty() ? List.of() : segments.peekFirst().keyframe();
+            List<ReplayAction> stream = new ArrayList<>();
+            int ticks = 0;
+            for (Segment seg : segments) {
+                for (List<byte[]> frame : seg.frames()) {
+                    for (byte[] p : frame) stream.add(new ReplayAction(GAME_PACKET_ACTION, p));
+                    stream.add(new ReplayAction(NEXT_TICK_ACTION, new byte[0]));
+                    ticks++;
+                }
+            }
+            for (byte[] p : current) stream.add(new ReplayAction(GAME_PACKET_ACTION, p));
+            return new ClipData(snapshot, stream, ticks);
         } finally { lock.unlock(); }
     }
 }

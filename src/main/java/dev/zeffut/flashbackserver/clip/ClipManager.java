@@ -116,10 +116,13 @@ public final class ClipManager implements Listener {
             return future;
         }
 
+        // Capture snapshot keyframe + stream + tick count atomically (one lock) so a concurrent
+        // keyframe rotation can't misalign them.
+        ClipBuffer.ClipData clip = a.buffer().captureClip();
         List<ReplayAction> snapshot = new ArrayList<>(config);
-        snapshot.addAll(a.buffer().clipSnapshotActions());
-        List<ReplayAction> stream = a.buffer().clipStreamActions();
-        int ticks = a.buffer().clipTickCount();
+        snapshot.addAll(clip.snapshot());
+        List<ReplayAction> stream = clip.stream();
+        int ticks = clip.tickCount();
         String name = player.getName();
         Path out = outputDir.resolve(name + "-clip-" + clipCounter.incrementAndGet() + ".flashback");
         PlatformScheduler.async(plugin, () -> {
