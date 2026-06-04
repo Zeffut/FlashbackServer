@@ -34,6 +34,7 @@ class FlashbackValidatorRenderableTest {
 
     private static final String GAME_PACKET         = "flashback:action/game_packet";
     private static final String CREATE_LOCAL_PLAYER = "flashback:action/create_local_player";
+    private static final String CONFIG_PACKET       = "flashback:action/configuration_packet";
     private static final String NEXT_TICK           = "flashback:action/next_tick";
 
     /** Constructs a minimal game_packet ReplayAction whose payload starts with the given id byte. */
@@ -70,6 +71,7 @@ class FlashbackValidatorRenderableTest {
     @Test
     void acceptsFullRenderableSnapshot(@TempDir Path dir) throws Exception {
         List<ReplayAction> snapshot = List.of(
+            new ReplayAction(CONFIG_PACKET, new byte[]{0x07, 0x01}), // minimal config_packet (registry data stub)
             gamePacket(ID_LOGIN),
             new ReplayAction(CREATE_LOCAL_PLAYER, new byte[32]), // minimal non-empty payload
             gamePacket(ID_POSITION),
@@ -84,12 +86,37 @@ class FlashbackValidatorRenderableTest {
     }
 
     // -----------------------------------------------------------------------
+    // Negative fixture: configuration_packet missing
+    // -----------------------------------------------------------------------
+
+    @Test
+    void rejectsMissingConfigurationPacket(@TempDir Path dir) throws Exception {
+        List<ReplayAction> snapshot = List.of(
+            // CONFIG_PACKET intentionally omitted
+            gamePacket(ID_LOGIN),
+            new ReplayAction(CREATE_LOCAL_PLAYER, new byte[32]),
+            gamePacket(ID_POSITION),
+            gamePacket(ID_PLAYER_INFO),
+            gamePacket(ID_CHUNK)
+        );
+        Path file = writeFixture(dir, "no-config", snapshot);
+
+        FlashbackValidator.Report report = FlashbackValidator.validateRenderable(file);
+        assertFalse(report.valid(), "should be invalid when configuration_packet is absent");
+        assertTrue(
+            report.problems().stream().anyMatch(p -> p.toLowerCase().contains("configuration")),
+            "problem should mention configuration data, got: " + report.problems()
+        );
+    }
+
+    // -----------------------------------------------------------------------
     // Negative fixture: chunk packet (id=39) missing
     // -----------------------------------------------------------------------
 
     @Test
     void rejectsMissingChunkPacket(@TempDir Path dir) throws Exception {
         List<ReplayAction> snapshot = List.of(
+            new ReplayAction(CONFIG_PACKET, new byte[]{0x07, 0x01}),
             gamePacket(ID_LOGIN),
             new ReplayAction(CREATE_LOCAL_PLAYER, new byte[32]),
             gamePacket(ID_POSITION),
@@ -113,6 +140,7 @@ class FlashbackValidatorRenderableTest {
     @Test
     void rejectsMissingLoginPacket(@TempDir Path dir) throws Exception {
         List<ReplayAction> snapshot = List.of(
+            new ReplayAction(CONFIG_PACKET, new byte[]{0x07, 0x01}),
             // ID_LOGIN intentionally omitted
             new ReplayAction(CREATE_LOCAL_PLAYER, new byte[32]),
             gamePacket(ID_POSITION),
@@ -136,6 +164,7 @@ class FlashbackValidatorRenderableTest {
     @Test
     void rejectsMissingCreateLocalPlayer(@TempDir Path dir) throws Exception {
         List<ReplayAction> snapshot = List.of(
+            new ReplayAction(CONFIG_PACKET, new byte[]{0x07, 0x01}),
             gamePacket(ID_LOGIN),
             // CREATE_LOCAL_PLAYER intentionally omitted
             gamePacket(ID_POSITION),
@@ -165,6 +194,7 @@ class FlashbackValidatorRenderableTest {
         meta.chunks.put("c0.flashback", new ChunkMeta(5));
 
         List<ReplayAction> snapshot = List.of(
+            new ReplayAction(CONFIG_PACKET, new byte[]{0x07, 0x01}),
             gamePacket(ID_LOGIN),
             new ReplayAction(CREATE_LOCAL_PLAYER, new byte[32]),
             gamePacket(ID_POSITION),

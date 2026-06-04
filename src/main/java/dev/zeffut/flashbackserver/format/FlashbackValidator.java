@@ -29,6 +29,8 @@ public final class FlashbackValidator {
     private static final String ID_CREATE_LOCAL_PLAYER = "flashback:action/create_local_player";
     /** Identifier for raw game packets captured from the wire. */
     private static final String ID_GAME_PACKET         = "flashback:action/game_packet";
+    /** Identifier for CONFIGURATION-phase packets (registry data, features, tags). */
+    private static final String ID_CONFIG_PACKET       = "flashback:action/configuration_packet";
 
     private FlashbackValidator() {}
 
@@ -83,6 +85,8 @@ public final class FlashbackValidator {
      *
      * <p>The snapshot of the first chunk must contain the "renderable floor":
      * <ul>
+     *   <li>At least one {@code flashback:action/configuration_packet} action (registry/config
+     *       data presence).</li>
      *   <li>At least one {@code flashback:action/create_local_player} action.</li>
      *   <li>A login game_packet (leading varint id == {@value #PACKET_ID_LOGIN}).</li>
      *   <li>A position game_packet (leading varint id == {@value #PACKET_ID_POSITION}).</li>
@@ -112,6 +116,7 @@ public final class FlashbackValidator {
             ChunkReader.Result result = ChunkReader.read(chunkBytes);
             List<ReplayAction> snapshot = result.snapshotActions();
 
+            boolean hasConfigPacket      = false;
             boolean hasCreateLocalPlayer = false;
             boolean hasLogin             = false;
             boolean hasPosition          = false;
@@ -119,17 +124,21 @@ public final class FlashbackValidator {
             boolean hasPlayerInfo        = false;
 
             for (ReplayAction action : snapshot) {
-                if (ID_CREATE_LOCAL_PLAYER.equals(action.identifier())) {
+                if (ID_CONFIG_PACKET.equals(action.identifier())) {
+                    hasConfigPacket = true;
+                } else if (ID_CREATE_LOCAL_PLAYER.equals(action.identifier())) {
                     hasCreateLocalPlayer = true;
                 } else if (ID_GAME_PACKET.equals(action.identifier())) {
                     int packetId = readLeadingVarInt(action.payload());
-                    if (packetId == PACKET_ID_LOGIN)       hasLogin       = true;
+                    if (packetId == PACKET_ID_LOGIN)            hasLogin       = true;
                     else if (packetId == PACKET_ID_POSITION)    hasPosition    = true;
                     else if (packetId == PACKET_ID_LEVEL_CHUNK) hasChunk       = true;
                     else if (packetId == PACKET_ID_PLAYER_INFO) hasPlayerInfo  = true;
                 }
             }
 
+            if (!hasConfigPacket)
+                problems.add("snapshot missing configuration data");
             if (!hasCreateLocalPlayer)
                 problems.add("snapshot missing: flashback:action/create_local_player");
             if (!hasLogin)

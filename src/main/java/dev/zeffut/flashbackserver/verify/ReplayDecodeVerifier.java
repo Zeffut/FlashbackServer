@@ -10,6 +10,8 @@ import net.minecraft.network.ProtocolInfo;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.configuration.ClientConfigurationPacketListener;
+import net.minecraft.network.protocol.configuration.ConfigurationProtocols;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.GameProtocols;
 
@@ -18,14 +20,17 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Decodes every {@code flashback:action/game_packet} action in a {@code .flashback} file through
- * Minecraft's real clientbound PLAY codec and reports any decode failures or trailing bytes.
+ * Decodes every {@code flashback:action/game_packet} and
+ * {@code flashback:action/configuration_packet} action in a {@code .flashback} file through
+ * Minecraft's real clientbound PLAY and CONFIGURATION codecs respectively, and reports any decode
+ * failures or trailing bytes.
  *
  * <p>All NMS access is confined to this class.
  */
 public final class ReplayDecodeVerifier {
 
-    private static final String GAME_PACKET = "flashback:action/game_packet";
+    private static final String GAME_PACKET   = "flashback:action/game_packet";
+    private static final String CONFIG_PACKET = "flashback:action/configuration_packet";
     private static final int MAX_PROBLEMS = 20;
 
     private ReplayDecodeVerifier() {}
@@ -37,11 +42,12 @@ public final class ReplayDecodeVerifier {
     }
 
     /**
-     * Opens {@code file}, iterates every chunk, and decodes each {@code game_packet} action
-     * through the clientbound PLAY codec.
+     * Opens {@code file}, iterates every chunk, and decodes each {@code game_packet} action through
+     * the clientbound PLAY codec and each {@code configuration_packet} action through the clientbound
+     * CONFIGURATION codec.
      *
      * @param file           path to the {@code .flashback} container
-     * @param registryAccess live registry access for the codec decorator
+     * @param registryAccess live registry access for the PLAY codec decorator
      * @return a {@link Result} summarising how many packets decoded cleanly vs. with errors
      */
     public static Result verify(Path file, RegistryAccess registryAccess) {
@@ -49,11 +55,15 @@ public final class ReplayDecodeVerifier {
         int errors = 0;
         List<String> problems = new ArrayList<>();
 
-        // Build the codec once — same pattern as PacketSerializer but using decode.
-        ProtocolInfo<ClientGamePacketListener> info =
+        // Build both codecs once.
+        ProtocolInfo<ClientGamePacketListener> gameInfo =
                 GameProtocols.CLIENTBOUND_TEMPLATE.bind(
                         RegistryFriendlyByteBuf.decorator(registryAccess));
-        StreamCodec<ByteBuf, Packet<? super ClientGamePacketListener>> codec = info.codec();
+        StreamCodec<ByteBuf, Packet<? super ClientGamePacketListener>> gameCodec = gameInfo.codec();
+
+        // CONFIG codec is already bound over plain FriendlyByteBuf — no decorator needed.
+        StreamCodec<ByteBuf, Packet<? super ClientConfigurationPacketListener>> configCodec =
+                ConfigurationProtocols.CLIENTBOUND.codec();
 
         try (FlashbackContainer.Reader reader = FlashbackContainer.open(file)) {
             var meta = reader.readMetadata();
@@ -73,7 +83,12 @@ public final class ReplayDecodeVerifier {
                 }
 
                 for (ReplayAction action : actions) {
-                    if (!GAME_PACKET.equals(action.identifier())) {
+                    final StreamCodec<ByteBuf, ?> codec;
+                    if (GAME_PACKET.equals(action.identifier())) {
+                        codec = gameCodec;
+                    } else if (CONFIG_PACKET.equals(action.identifier())) {
+                        codec = configCodec;
+                    } else {
                         // Skip create_local_player, next_tick, and any other synthetic actions.
                         continue;
                     }
@@ -85,7 +100,8 @@ public final class ReplayDecodeVerifier {
                             errors++;
                             if (problems.size() < MAX_PROBLEMS) {
                                 problems.add("Trailing bytes after decode in chunk '" + chunkName
-                                        + "': " + buf.readableBytes() + " byte(s) unconsumed");
+                                        + "' (" + action.identifier() + "): "
+                                        + buf.readableBytes() + " byte(s) unconsumed");
                             }
                         } else {
                             decoded++;
@@ -93,7 +109,8 @@ public final class ReplayDecodeVerifier {
                     } catch (Exception e) {
                         errors++;
                         if (problems.size() < MAX_PROBLEMS) {
-                            problems.add("Decode error in chunk '" + chunkName + "': "
+                            problems.add("Decode error in chunk '" + chunkName
+                                    + "' (" + action.identifier() + "): "
                                     + e.getClass().getSimpleName() + ": " + e.getMessage());
                         }
                     } finally {
