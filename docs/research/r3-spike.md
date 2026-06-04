@@ -177,6 +177,17 @@ Notes:
   `ClientboundPlayerPositionPacket.of(int, PositionMoveRotation, Set)`, `createCommonSpawnInfo`,
   `ClientboundPlayerInfoUpdatePacket(EnumSet, Collection)`.
 
+## Decode-replay smoke test — deemed impractical
+
+MCProtocolLib decoding of raw clientbound PLAY `byte[]` in isolation requires a live session with
+initialized protocol state (codec, compression, encryption, connection object). There is no public
+API to feed raw bytes through a standalone decoder without a connected `Session`. Therefore a
+test-scope decode-replay smoke test was not added. The structural `validateRenderable` check in
+`FlashbackValidator` + the human P6 spot-check (loading the recording in the Flashback client) are
+the verification gates for R3a.
+
+---
+
 ## Reproduction
 
 Temporary `SynthProbe` (probe) + `SynthSpikeIT` (harness test) produced the `[synth]` log above on a
