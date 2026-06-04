@@ -1,6 +1,7 @@
 package dev.zeffut.flashbackserver.record;
 
 import dev.zeffut.flashbackserver.capture.PacketCapture;
+import dev.zeffut.flashbackserver.capture.PacketSink;
 import dev.zeffut.flashbackserver.platform.PlatformScheduler;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -17,7 +18,7 @@ public final class RecordingManager implements Listener {
     private final Plugin plugin;
     private final Path outputDir;
     private final ConcurrentHashMap<UUID, Active> active = new ConcurrentHashMap<>();
-    private record Active(FlashbackRecorder recorder, TickClock clock, Path output) {}
+    private record Active(FlashbackRecorder recorder, TickClock clock, Path output, PacketSink sink) {}
 
     public RecordingManager(Plugin plugin, Path outputDir) {
         this.plugin = plugin; this.outputDir = outputDir;
@@ -29,10 +30,11 @@ public final class RecordingManager implements Listener {
         Path out = outputDir.resolve(player.getName() + "-" + id + ".flashback");
         FlashbackRecorder recorder = new FlashbackRecorder(out, player.getName(), 769, 4189);
         TickClock clock = new TickClock(plugin, player);
-        active.put(id, new Active(recorder, clock, out));
-        PacketCapture.injectRaw(player, (p, packet) -> {
+        PacketSink sink = (p, packet) -> {
             if (packet.rawBytes() != null) recorder.onPacket(packet.rawBytes());
-        });
+        };
+        if (active.putIfAbsent(id, new Active(recorder, clock, out, sink)) != null) return false;
+        PacketCapture.injectRaw(player, sink);
         clock.start(recorder::onTick);
         return true;
     }
@@ -41,7 +43,7 @@ public final class RecordingManager implements Listener {
         Active a = active.remove(player.getUniqueId());
         var future = new CompletableFuture<Path>();
         if (a == null) { future.complete(null); return future; }
-        PacketCapture.ejectRaw(player);
+        PacketCapture.ejectRaw(player, a.sink());
         a.clock().stop();
         PlatformScheduler.async(plugin, () -> {
             try {

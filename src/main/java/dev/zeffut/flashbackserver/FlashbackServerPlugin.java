@@ -24,6 +24,7 @@ public final class FlashbackServerPlugin extends JavaPlugin {
         try { java.nio.file.Files.createDirectories(clipsDir); } catch (java.io.IOException e) { throw new RuntimeException(e); }
         dev.zeffut.flashbackserver.clip.ClipManager clipManager =
             new dev.zeffut.flashbackserver.clip.ClipManager(this, clipsDir, window);
+        getServer().getPluginManager().registerEvents(clipManager, this);
         getServer().getPluginManager().registerEvents(
             new dev.zeffut.flashbackserver.clip.ClipDeathListener(clipManager, autoClip), this);
         getCommand("replay").setExecutor(
