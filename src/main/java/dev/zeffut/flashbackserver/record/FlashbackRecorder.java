@@ -1,9 +1,5 @@
 package dev.zeffut.flashbackserver.record;
 
-import dev.zeffut.flashbackserver.format.ChunkMeta;
-import dev.zeffut.flashbackserver.format.ChunkWriter;
-import dev.zeffut.flashbackserver.format.FlashbackContainer;
-import dev.zeffut.flashbackserver.format.FlashbackMeta;
 import dev.zeffut.flashbackserver.format.ReplayAction;
 
 import java.nio.file.Path;
@@ -71,19 +67,6 @@ public final class FlashbackRecorder {
             lock.unlock();
         }
 
-        byte[] chunkBytes = ChunkWriter.write(new byte[0], snapshot);
-
-        FlashbackMeta meta = new FlashbackMeta();
-        meta.name            = playerName;
-        meta.versionString   = "1.21.5";
-        meta.protocolVersion = protocolVersion;
-        meta.dataVersion     = dataVersion;
-        meta.totalTicks      = ticks;
-        meta.chunks.put("c0.flashback", new ChunkMeta(ticks));
-
-        try (FlashbackContainer.Writer writer = FlashbackContainer.create(output)) {
-            writer.writeMetadata(meta);
-            writer.writeChunk("c0.flashback", chunkBytes);
-        }
+        ReplayFiles.write(output, playerName, protocolVersion, dataVersion, snapshot, ticks);
     }
 }
