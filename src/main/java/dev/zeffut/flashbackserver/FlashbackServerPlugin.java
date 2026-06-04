@@ -16,7 +16,18 @@ public final class FlashbackServerPlugin extends JavaPlugin {
         try { java.nio.file.Files.createDirectories(replays); } catch (java.io.IOException e) { throw new RuntimeException(e); }
         RecordingManager manager = new RecordingManager(this, replays);
         getServer().getPluginManager().registerEvents(manager, this);
-        getCommand("replay").setExecutor(new ReplayCommand(manager));
+
+        saveDefaultConfig();
+        int window = getConfig().getInt("clips.window-seconds", 30);
+        boolean autoClip = getConfig().getBoolean("clips.auto-clip-on-death", true);
+        java.nio.file.Path clipsDir = getDataFolder().toPath().resolve("clips");
+        try { java.nio.file.Files.createDirectories(clipsDir); } catch (java.io.IOException e) { throw new RuntimeException(e); }
+        dev.zeffut.flashbackserver.clip.ClipManager clipManager =
+            new dev.zeffut.flashbackserver.clip.ClipManager(this, clipsDir, window);
+        getServer().getPluginManager().registerEvents(
+            new dev.zeffut.flashbackserver.clip.ClipDeathListener(clipManager, autoClip), this);
+        getCommand("replay").setExecutor(
+            new dev.zeffut.flashbackserver.command.ReplayCommand(manager, clipManager));
 
         getLogger().info("FlashbackServer enabled.");
     }

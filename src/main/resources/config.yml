@@ -1,0 +1,5 @@
+clips:
+  # Length of the rolling clip window, in seconds.
+  window-seconds: 30
+  # Automatically save a clip when an armed player dies.
+  auto-clip-on-death: true
