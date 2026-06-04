@@ -44,9 +44,9 @@ import java.util.Set;
  *       loaded chunk within {@link #SNAPSHOT_CHUNK_RADIUS} of the player's chunk position</li>
  * </ol>
  *
- * <p><strong>Threading:</strong> this method reads chunk data and entity state and MUST be called
- * on the player's region thread (Folia) or the main thread (standard Paper). The caller is
- * responsible for scheduling accordingly.
+ * <p><strong>Threading:</strong> {@link #configActions(Player)} and {@link #dynamicActions(Player)}
+ * (and therefore {@link #build(Player)}) MUST be called on the player's region thread (Folia) or
+ * the main thread (standard Paper). The caller is responsible for scheduling accordingly.
  *
  * <p>All NMS access is confined to this package.
  */
@@ -69,21 +69,23 @@ public final class SnapshotBuilder {
     private SnapshotBuilder() {}
 
     /**
-     * Builds the ordered initial-state snapshot actions for {@code player}.
+     * Builds the configuration-phase snapshot actions for {@code player} (step 1 of the full
+     * snapshot). These actions are session-invariant and correspond to the
+     * {@code flashback:action/configuration_packet} entries.
+     *
+     * <p><strong>Threading:</strong> must be called on the player's region thread.
      *
      * @param player the online Bukkit player
-     * @return an ordered, mutable list of {@link ReplayAction}s ready to be written as a snapshot
-     *         chunk
+     * @return an ordered, mutable list of configuration-phase {@link ReplayAction}s
      * @throws IllegalArgumentException if {@code player} is not a {@link CraftPlayer}
      */
-    public static List<ReplayAction> build(Player player) {
+    public static List<ReplayAction> configActions(Player player) {
         if (!(player instanceof CraftPlayer craft)) {
             throw new IllegalArgumentException(
                     "Expected CraftPlayer but got " + player.getClass().getName());
         }
 
         ServerPlayer sp = craft.getHandle();
-        ServerLevel level = sp.serverLevel();
         MinecraftServer server = sp.getServer();
 
         List<ReplayAction> actions = new ArrayList<>();
@@ -129,6 +131,33 @@ public final class SnapshotBuilder {
                 TagNetworkSerialization.serializeTagsToNetwork(server.registries()));
         actions.add(new ReplayAction(CONFIG_PACKET,
                 PacketSerializer.encodeConfigPacket(tagsPacket)));
+
+        return actions;
+    }
+
+    /**
+     * Builds the dynamic (play-phase) snapshot actions for {@code player} (steps 2–5 of the full
+     * snapshot). These actions cover login, local-player creation, position, player-info, and
+     * loaded chunks.
+     *
+     * <p><strong>Threading:</strong> must be called on the player's region thread, as it reads
+     * chunk data and entity state.
+     *
+     * @param player the online Bukkit player
+     * @return an ordered, mutable list of play-phase {@link ReplayAction}s
+     * @throws IllegalArgumentException if {@code player} is not a {@link CraftPlayer}
+     */
+    public static List<ReplayAction> dynamicActions(Player player) {
+        if (!(player instanceof CraftPlayer craft)) {
+            throw new IllegalArgumentException(
+                    "Expected CraftPlayer but got " + player.getClass().getName());
+        }
+
+        ServerPlayer sp = craft.getHandle();
+        ServerLevel level = sp.serverLevel();
+        MinecraftServer server = sp.getServer();
+
+        List<ReplayAction> actions = new ArrayList<>();
 
         // ── PLAY phase ─────────────────────────────────────────────────────────────────────────
 
@@ -194,6 +223,26 @@ public final class SnapshotBuilder {
             }
         }
 
+        return actions;
+    }
+
+    /**
+     * Builds the ordered initial-state snapshot actions for {@code player}.
+     *
+     * <p>Equivalent to concatenating {@link #configActions(Player)} followed by
+     * {@link #dynamicActions(Player)}.
+     *
+     * <p><strong>Threading:</strong> must be called on the player's region thread.
+     *
+     * @param player the online Bukkit player
+     * @return an ordered, mutable list of {@link ReplayAction}s ready to be written as a snapshot
+     *         chunk
+     * @throws IllegalArgumentException if {@code player} is not a {@link CraftPlayer}
+     */
+    public static List<ReplayAction> build(Player player) {
+        List<ReplayAction> actions = new ArrayList<>();
+        actions.addAll(configActions(player));
+        actions.addAll(dynamicActions(player));
         return actions;
     }
 }
