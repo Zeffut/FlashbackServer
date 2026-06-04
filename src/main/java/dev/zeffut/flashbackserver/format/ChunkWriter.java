@@ -19,10 +19,12 @@ public final class ChunkWriter {
 
         dos.writeInt(MAGIC);
 
+        // Registry: count, then the identifiers in index order. The zero-based POSITION in this
+        // list is the numeric id — no explicit per-entry index is written (matches Flashback's
+        // writeIdentifier loop). registry is a LinkedHashMap, so entrySet() is in insertion/index order.
         VarCodec.writeVarInt(dos, registry.size());
-        for (Map.Entry<String, Integer> e : registry.entrySet()) {
-            VarCodec.writeVarInt(dos, e.getValue());
-            VarCodec.writeString(dos, e.getKey());
+        for (String identifier : registry.keySet()) {
+            VarCodec.writeString(dos, identifier);
         }
 
         dos.writeInt(snapshot.length);

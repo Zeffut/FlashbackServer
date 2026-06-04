@@ -15,10 +15,11 @@ public final class ChunkReader {
         if (magic != ChunkWriter.MAGIC) throw new IOException("Bad magic: " + Integer.toHexString(magic));
 
         int count = VarCodec.readVarInt(in);
+        if (count < 0) throw new IOException("Negative action registry count: " + count);
         Map<Integer, String> registry = new HashMap<>();
         for (int i = 0; i < count; i++) {
-            int index = VarCodec.readVarInt(in);
-            registry.put(index, VarCodec.readString(in));
+            // Position is the id — identifiers only, no explicit index (matches Flashback's format).
+            registry.put(i, VarCodec.readString(in));
         }
 
         int snapshotSize = in.readInt();

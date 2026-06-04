@@ -36,8 +36,7 @@ class ChunkCodecTest {
         var dos = new DataOutputStream(out);
         dos.writeInt(ChunkWriter.MAGIC);
         VarCodec.writeVarInt(dos, 1);                 // registry count = 1
-        VarCodec.writeVarInt(dos, 0);                 // index 0
-        VarCodec.writeString(dos, "flashback:game_packet");
+        VarCodec.writeString(dos, "flashback:game_packet");  // identifier only; position 0 = id 0
         dos.writeInt(0);                              // empty snapshot
         VarCodec.writeVarInt(dos, 0);                 // action id 0
         dos.writeInt(-1);                             // malicious negative payload size
@@ -54,8 +53,7 @@ class ChunkCodecTest {
         var dos = new DataOutputStream(out);
         dos.writeInt(ChunkWriter.MAGIC);
         VarCodec.writeVarInt(dos, 1);                 // registry count = 1
-        VarCodec.writeVarInt(dos, 0);                 // index 0
-        VarCodec.writeString(dos, "flashback:game_packet");
+        VarCodec.writeString(dos, "flashback:game_packet");  // identifier only; position 0 = id 0
         dos.writeInt(0);                              // empty snapshot
         VarCodec.writeVarInt(dos, 5);                 // action id 5 — not in the registry
         dos.writeInt(0);                              // empty payload
