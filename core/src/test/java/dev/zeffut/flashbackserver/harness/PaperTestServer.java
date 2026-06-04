@@ -35,6 +35,14 @@ public final class PaperTestServer implements AutoCloseable {
      * @param project PaperMC project name, e.g. {@code "paper"} or {@code "folia"}
      */
     public static PaperTestServer start(Path baseDir, int port, String project) throws Exception {
+        return start(baseDir, port, project, "1.21.5");
+    }
+
+    /**
+     * Boots the specified PaperMC project at the specified Minecraft version. Used by the
+     * cross-version integration test (e.g. {@code project="paper", version="1.21.8"}).
+     */
+    public static PaperTestServer start(Path baseDir, int port, String project, String version) throws Exception {
         Path runDir = baseDir.resolve("run");
         Files.createDirectories(runDir.resolve("plugins"));
         Files.writeString(runDir.resolve("eula.txt"), "eula=true\n");
@@ -54,7 +62,7 @@ public final class PaperTestServer implements AutoCloseable {
         Files.copy(Path.of(pluginJar), runDir.resolve("plugins").resolve("FlashbackServer.jar"),
             StandardCopyOption.REPLACE_EXISTING);
 
-        Path serverJar = PaperDownloader.resolve(baseDir.resolve("test-server"), project, "1.21.5");
+        Path serverJar = PaperDownloader.resolve(baseDir.resolve("test-server"), project, version);
 
         ProcessBuilder pb = new ProcessBuilder(
             "java", "-Xmx1G", "-jar", serverJar.toAbsolutePath().toString(), "nogui")

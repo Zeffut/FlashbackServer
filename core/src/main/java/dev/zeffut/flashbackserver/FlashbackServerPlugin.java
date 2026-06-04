@@ -12,6 +12,13 @@ public final class FlashbackServerPlugin extends JavaPlugin {
         java.nio.file.Path replays = getDataFolder().toPath().resolve("replays");
         try { java.nio.file.Files.createDirectories(replays); } catch (java.io.IOException e) { throw new RuntimeException(e); }
 
+        // Eagerly select + instantiate the version adapter so any version mismatch surfaces at enable
+        // (fail-fast) and the chosen adapter is observable.
+        dev.zeffut.flashbackserver.version.VersionAdapter adapter =
+            dev.zeffut.flashbackserver.version.VersionAdapters.current();
+        getLogger().info("Version adapter: " + adapter.getClass().getSimpleName()
+            + " (protocol " + adapter.protocolVersion() + ", data " + adapter.dataVersion() + ")");
+
         saveDefaultConfig();
         int window = getConfig().getInt("clips.window-seconds", 30);
         boolean autoClip = getConfig().getBoolean("clips.auto-clip-on-death", true);

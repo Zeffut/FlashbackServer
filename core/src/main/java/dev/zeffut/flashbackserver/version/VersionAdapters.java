@@ -2,30 +2,35 @@ package dev.zeffut.flashbackserver.version;
 
 import org.bukkit.Bukkit;
 
+import java.util.Map;
 import java.util.logging.Logger;
 
 /**
  * Factory for obtaining the active {@link VersionAdapter}.
  *
- * <p>The concrete NMS adapter lives in a separate Gradle module ({@code :nms:v1_21_5}) which is
- * shaded into the final plugin jar at build time. {@code :core} therefore has no compile-time
- * dependency on the adapter — it is resolved <strong>reflectively</strong> here.
+ * <p>Each concrete NMS adapter lives in a separate Gradle module ({@code :nms:vX}) shaded into the
+ * final plugin jar at build time. {@code :core} therefore has no compile-time dependency on the
+ * adapters — they are resolved <strong>reflectively</strong> here.
  *
- * <p>A future MV3c step will switch on {@code Bukkit.getMinecraftVersion()} to select the FQN of
- * the appropriate implementation. For now this resolves to the single v1_21_5 adapter, logging a
- * warning if the running Minecraft version differs.
+ * <p>The running Minecraft version ({@code Bukkit.getMinecraftVersion()}) selects the adapter FQN.
+ * Add a row to {@link #ADAPTERS_BY_VERSION} (and a matching {@code :nms:vX} module + a
+ * {@code PacketIds} row) per supported version. An unrecognised version falls back to the newest
+ * known adapter with a warning.
  */
 public final class VersionAdapters {
     private VersionAdapters() {}
 
     private static final Logger LOG = Logger.getLogger(VersionAdapters.class.getName());
 
-    /** Fully-qualified class name of the v1_21_5 adapter (shaded in from {@code :nms:v1_21_5}). */
-    private static final String V1_21_5_FQN =
-        "dev.zeffut.flashbackserver.version.v1_21_5.V1_21_5Adapter";
+    /** Minecraft version → adapter FQN (each shaded in from its {@code :nms:vX} module). */
+    private static final Map<String, String> ADAPTERS_BY_VERSION = Map.of(
+        "1.21.5", "dev.zeffut.flashbackserver.version.v1_21_5.V1_21_5Adapter",
+        "1.21.8", "dev.zeffut.flashbackserver.version.v1_21_8.V1_21_8Adapter"
+    );
 
-    /** Minecraft version this build's bundled adapter targets. */
-    private static final String SUPPORTED_VERSION = "1.21.5";
+    /** Adapter used when the running version isn't in the table (newest known). */
+    private static final String FALLBACK_FQN =
+        "dev.zeffut.flashbackserver.version.v1_21_8.V1_21_8Adapter";
 
     /** Returns the {@link VersionAdapter} for the running Minecraft version. */
     public static VersionAdapter current() {
@@ -43,24 +48,18 @@ public final class VersionAdapters {
         }
     }
 
-    /**
-     * Resolves the adapter FQN for the running Minecraft version. Currently always returns the
-     * v1_21_5 adapter, but logs a warning if the detected version differs (MV3c will add a real
-     * version→FQN switch).
-     */
     private static String resolveAdapterFqn() {
         String running;
         try {
             running = Bukkit.getMinecraftVersion();
         } catch (Throwable t) {
-            // Bukkit not available (shouldn't happen at runtime) — fall back to the default.
-            return V1_21_5_FQN;
+            return FALLBACK_FQN; // Bukkit not available (shouldn't happen at runtime)
         }
-        if (running != null && !SUPPORTED_VERSION.equals(running)) {
-            LOG.warning("FlashbackServer was built for Minecraft " + SUPPORTED_VERSION
-                + " but the server is running " + running
-                + ". Falling back to the " + SUPPORTED_VERSION + " adapter; behaviour may be incorrect.");
-        }
-        return V1_21_5_FQN;
+        String fqn = ADAPTERS_BY_VERSION.get(running);
+        if (fqn != null) return fqn;
+        LOG.warning("FlashbackServer has no version adapter for Minecraft " + running
+            + "; falling back to the newest known adapter. Recordings may be incorrect — "
+            + "add an :nms module + a VersionAdapters row for this version.");
+        return FALLBACK_FQN;
     }
 }

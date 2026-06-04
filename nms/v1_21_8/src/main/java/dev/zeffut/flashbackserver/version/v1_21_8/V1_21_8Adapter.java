@@ -1,4 +1,4 @@
-package dev.zeffut.flashbackserver.version.v1_21_5;
+package dev.zeffut.flashbackserver.version.v1_21_8;
 
 import dev.zeffut.flashbackserver.format.ReplayAction;
 import dev.zeffut.flashbackserver.version.VersionAdapter;
@@ -36,10 +36,10 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * {@link VersionAdapter} implementation for Minecraft 1.21.5.
+ * {@link VersionAdapter} implementation for Minecraft 1.21.8.
  *
  * <p>All {@code net.minecraft.*} and {@code org.bukkit.craftbukkit.*} access in this project is
- * confined to this package ({@code version/v1_21_5/}).
+ * confined to this package ({@code version/v1_21_8/}).
  *
  * <h3>Snapshot ordering guarantee</h3>
  * The three snapshot-building methods produce actions in this order when assembled by core:
@@ -50,7 +50,7 @@ import java.util.Set;
  *   <li>{@link #postLoginActions} — position, player-info, chunks (game_packet × N)</li>
  * </ol>
  */
-public final class V1_21_5Adapter implements VersionAdapter {
+public final class V1_21_8Adapter implements VersionAdapter {
 
     /** Maximum chunk radius (in chunks) to include in the snapshot. */
     private static final int SNAPSHOT_CHUNK_RADIUS = 8;

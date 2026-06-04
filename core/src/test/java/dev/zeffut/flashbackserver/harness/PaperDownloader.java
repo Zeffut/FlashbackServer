@@ -30,7 +30,7 @@ public final class PaperDownloader {
      */
     public static Path resolve(Path targetDir, String project, String version) throws Exception {
         Files.createDirectories(targetDir);
-        Path jar = targetDir.resolve(project + ".jar");
+        Path jar = targetDir.resolve(project + "-" + version + ".jar");
         if (Files.exists(jar)) return jar;
 
         HttpClient http = HttpClient.newHttpClient();
@@ -50,7 +50,7 @@ public final class PaperDownloader {
             + "/builds/" + buildNumber + "/downloads/" + fileName;
         // Download to a temp file and atomically move into place only on success, so a failed
         // download never leaves a corrupt jar that the cache check would then trust.
-        Path tmp = targetDir.resolve(project + ".jar.tmp");
+        Path tmp = targetDir.resolve(project + "-" + version + ".jar.tmp");
         try {
             HttpResponse<Path> dlResp = http.send(HttpRequest.newBuilder(URI.create(dl)).build(),
                 HttpResponse.BodyHandlers.ofFile(tmp));

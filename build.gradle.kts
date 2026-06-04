@@ -25,17 +25,21 @@ dependencies {
 // ── Bundled plugin jar ─────────────────────────────────────────────────────
 // The final deployable jar = :core classes + resources + the REOBF'd :nms:v1_21_5 adapter classes.
 // Paper's PluginRemapper remaps the (mojang→spigot) nms references in the reobf classes at load.
-// Ensure the nms subproject is configured first so its paperweight `reobfJar` task exists.
+// Ensure the nms subprojects are configured first so their paperweight `reobfJar` tasks exist.
 evaluationDependsOn(":nms:v1_21_5")
-val nmsReobfJar = project(":nms:v1_21_5").tasks.named("reobfJar")
+evaluationDependsOn(":nms:v1_21_8")
+val nmsReobfJar5 = project(":nms:v1_21_5").tasks.named("reobfJar")
+val nmsReobfJar8 = project(":nms:v1_21_8").tasks.named("reobfJar")
 
 tasks.shadowJar {
     archiveClassifier.set("")
-    // Pull in the remapped NMS adapter classes (not the mojang-mapped ones).
-    dependsOn(nmsReobfJar)
-    from(zipTree(nmsReobfJar.map { it.outputs.files.singleFile })) {
-        // reobfJar produces a full jar; we only want the class files (plugin.yml comes from :core).
+    // Pull in each version adapter's remapped NMS classes (not the mojang-mapped ones).
+    dependsOn(nmsReobfJar5, nmsReobfJar8)
+    from(zipTree(nmsReobfJar5.map { it.outputs.files.singleFile })) {
         include("dev/zeffut/flashbackserver/version/v1_21_5/**")
+    }
+    from(zipTree(nmsReobfJar8.map { it.outputs.files.singleFile })) {
+        include("dev/zeffut/flashbackserver/version/v1_21_8/**")
     }
 }
 
