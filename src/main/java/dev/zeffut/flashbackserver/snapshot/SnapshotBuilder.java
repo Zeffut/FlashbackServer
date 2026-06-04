@@ -180,7 +180,7 @@ public final class SnapshotBuilder {
         // 3. create_local_player (Flashback synthetic action — no game_packet wrapper)
         actions.add(new ReplayAction(
                 CreateLocalPlayerAction.IDENTIFIER,
-                CreateLocalPlayerAction.payload(sp)));
+                CreateLocalPlayerAction.payload(player)));
 
         // 4. Position
         ClientboundPlayerPositionPacket positionPacket = ClientboundPlayerPositionPacket.of(

@@ -2,17 +2,24 @@ package dev.zeffut.flashbackserver.snapshot;
 
 import org.junit.jupiter.api.Test;
 
+import java.io.DataInputStream;
+import java.io.ByteArrayInputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Unit tests for {@link CreateLocalPlayerAction#primitivePrefix} — verifies the exact field order
- * and byte encoding of the fixed-size prefix without requiring a running server or NMS classes.
+ * Unit tests for {@link CreateLocalPlayerAction} — verifies the exact byte layout of both the
+ * fixed-size prefix and the full payload (including GameProfile wire format) without requiring a
+ * running server or NMS classes.
  *
- * <p>The prefix layout is:
+ * <h2>Primitive-prefix layout</h2>
  * <pre>
  *   [ UUID msb 8B ][ UUID lsb 8B ]  → 16 bytes
  *   [ x 8B ][ y 8B ][ z 8B ]        → 24 bytes  (doubles, big-endian)
@@ -27,6 +34,15 @@ class CreateLocalPlayerActionTest {
     private static final double X = 12.5, Y = 64.0, Z = -3.75;
     private static final float X_ROT = 1.2f, Y_ROT = -0.5f, Y_HEAD_ROT = 1.8f;
     private static final double VX = 0.1, VY = -0.2, VZ = 0.3;
+
+    // Profile used for full-payload tests
+    private static final UUID PROFILE_ID = new UUID(0xAAAA_BBBB_CCCC_DDDdl, 0xEEEE_FFFF_0000_1111L);
+    private static final String PROFILE_NAME = "TestPlayer";
+    private static final String PROP_NAME = "textures";
+    private static final String PROP_VALUE = "eyJ0ZXh0dXJlcyI6e319";  // fake base64
+    private static final String PROP_SIG = "fakeSig";
+
+    // ── primitivePrefix tests ───────────────────────────────────────────────
 
     @Test
     void prefixIs76Bytes() {
@@ -80,7 +96,98 @@ class CreateLocalPlayerActionTest {
         assertEquals("flashback:action/create_local_player", CreateLocalPlayerAction.IDENTIFIER);
     }
 
-    // -------------------------------------------------------------------------
+    // ── full payload (build) tests — GameProfile wire format ───────────────
+
+    @Test
+    void fullPayloadStartsWith76BytePrefix() {
+        byte[] bytes = fullPayload();
+        // The first 76 bytes must match the primitive prefix exactly
+        byte[] expected = prefix();
+        for (int i = 0; i < 76; i++) {
+            assertEquals(expected[i], bytes[i],
+                    "byte mismatch at offset " + i + " between full payload and primitivePrefix");
+        }
+    }
+
+    @Test
+    void gameProfileSectionContainsUuidNameAndProperty() throws Exception {
+        byte[] bytes = fullPayload();
+        // Skip the 76-byte fixed prefix to reach the GameProfile section
+        DataInputStream dis = new DataInputStream(new ByteArrayInputStream(bytes, 76, bytes.length - 76));
+
+        // GameProfile UUID (2 longs)
+        long profMsb = dis.readLong();
+        long profLsb = dis.readLong();
+        assertEquals(PROFILE_ID.getMostSignificantBits(), profMsb, "profile UUID msb");
+        assertEquals(PROFILE_ID.getLeastSignificantBits(), profLsb, "profile UUID lsb");
+
+        // Profile name (varint-prefixed UTF-8)
+        String readName = readVarString(dis);
+        assertEquals(PROFILE_NAME, readName, "profile name");
+
+        // Property count
+        int propCount = readVarInt(dis);
+        assertEquals(1, propCount, "property count");
+
+        // Property: name, value, optional signature
+        String propName = readVarString(dis);
+        assertEquals(PROP_NAME, propName, "property name");
+        String propValue = readVarString(dis);
+        assertEquals(PROP_VALUE, propValue, "property value");
+
+        boolean hasSig = dis.readBoolean();
+        assertTrue(hasSig, "signature present flag");
+        String sig = readVarString(dis);
+        assertEquals(PROP_SIG, sig, "property signature");
+
+        // gameModeId (SURVIVAL = 0) — single byte varint
+        int gameModeId = readVarInt(dis);
+        assertEquals(0, gameModeId, "gameModeId SURVIVAL=0");
+    }
+
+    @Test
+    void gameProfileSectionNoPropertiesNoSignature() throws Exception {
+        byte[] bytes = CreateLocalPlayerAction.build(
+                TEST_UUID, X, Y, Z, X_ROT, Y_ROT, Y_HEAD_ROT, VX, VY, VZ,
+                PROFILE_ID, PROFILE_NAME,
+                List.of(),  // no properties
+                1 /* CREATIVE */);
+
+        DataInputStream dis = new DataInputStream(new ByteArrayInputStream(bytes, 76, bytes.length - 76));
+
+        // Skip GameProfile UUID + name (already tested above)
+        dis.readLong(); dis.readLong();
+        readVarString(dis);
+
+        int propCount = readVarInt(dis);
+        assertEquals(0, propCount, "no properties");
+
+        int gameModeId = readVarInt(dis);
+        assertEquals(1, gameModeId, "gameModeId CREATIVE=1");
+    }
+
+    @Test
+    void gameProfilePropertyWithNullSignature() throws Exception {
+        List<String[]> propsNoSig = new ArrayList<>();
+        propsNoSig.add(new String[]{PROP_NAME, PROP_VALUE, null});
+        byte[] bytes = CreateLocalPlayerAction.build(
+                TEST_UUID, X, Y, Z, X_ROT, Y_ROT, Y_HEAD_ROT, VX, VY, VZ,
+                PROFILE_ID, PROFILE_NAME,
+                propsNoSig,
+                2 /* ADVENTURE */);
+
+        DataInputStream dis = new DataInputStream(new ByteArrayInputStream(bytes, 76, bytes.length - 76));
+        dis.readLong(); dis.readLong(); // profile UUID
+        readVarString(dis);             // name
+        int propCount = readVarInt(dis);
+        assertEquals(1, propCount);
+        readVarString(dis); // prop name
+        readVarString(dis); // prop value
+        boolean hasSig = dis.readBoolean();
+        assertFalse(hasSig, "null signature → false boolean");
+    }
+
+    // ── helpers ────────────────────────────────────────────────────────────
 
     private static byte[] prefix() {
         return CreateLocalPlayerAction.primitivePrefix(
@@ -88,5 +195,34 @@ class CreateLocalPlayerActionTest {
                 X, Y, Z,
                 X_ROT, Y_ROT, Y_HEAD_ROT,
                 VX, VY, VZ);
+    }
+
+    private static byte[] fullPayload() {
+        List<String[]> props = new ArrayList<>();
+        props.add(new String[]{PROP_NAME, PROP_VALUE, PROP_SIG});
+        return CreateLocalPlayerAction.build(
+                TEST_UUID, X, Y, Z, X_ROT, Y_ROT, Y_HEAD_ROT, VX, VY, VZ,
+                PROFILE_ID, PROFILE_NAME,
+                props,
+                0 /* SURVIVAL */);
+    }
+
+    /** Reads a varint-length-prefixed UTF-8 string (matches VarCodec.readString). */
+    private static String readVarString(DataInputStream dis) throws Exception {
+        int len = readVarInt(dis);
+        byte[] buf = new byte[len];
+        dis.readFully(buf);
+        return new String(buf, StandardCharsets.UTF_8);
+    }
+
+    /** Reads an unsigned LEB128 VarInt (matches VarCodec.readVarInt). */
+    private static int readVarInt(DataInputStream dis) throws Exception {
+        int result = 0, shift = 0, b;
+        do {
+            b = dis.readByte() & 0xFF;
+            result |= (b & 0x7F) << shift;
+            shift += 7;
+        } while ((b & 0x80) != 0);
+        return result;
     }
 }

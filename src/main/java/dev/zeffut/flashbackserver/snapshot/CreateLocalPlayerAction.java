@@ -1,13 +1,16 @@
 package dev.zeffut.flashbackserver.snapshot;
 
-import com.mojang.authlib.GameProfile;
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufUtil;
-import io.netty.buffer.Unpooled;
-import net.minecraft.network.RegistryFriendlyByteBuf;
-import net.minecraft.network.codec.ByteBufCodecs;
-import net.minecraft.server.level.ServerPlayer;
+import com.destroystokyo.paper.profile.PlayerProfile;
+import com.destroystokyo.paper.profile.ProfileProperty;
+import dev.zeffut.flashbackserver.format.VarCodec;
+import org.bukkit.GameMode;
+import org.bukkit.entity.Player;
 
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -20,13 +23,13 @@ import java.util.UUID;
  *   <li>x, y, z — 3 doubles (24 bytes)</li>
  *   <li>xRot, yRot, yHeadRot — 3 floats (12 bytes)</li>
  *   <li>velocity x, y, z — 3 doubles (24 bytes)</li>
- *   <li>GameProfile — variable length (via {@code ByteBufCodecs.GAME_PROFILE})</li>
+ *   <li>GameProfile — variable length (manual MC wire format)</li>
  *   <li>gameModeId — varint</li>
  * </ol>
  *
  * <p>Total fixed prefix (UUID + positions + rotations + velocity): 76 bytes.
  *
- * <p>All NMS access is confined to this package.
+ * <p>Uses only the Bukkit/Paper API — no {@code net.minecraft} imports.
  */
 public final class CreateLocalPlayerAction {
 
@@ -36,86 +39,156 @@ public final class CreateLocalPlayerAction {
     private CreateLocalPlayerAction() {}
 
     /**
-     * Builds the payload from a live {@link ServerPlayer}.
+     * Builds the payload from a live Bukkit {@link Player}.
      *
-     * @param sp the server player
+     * @param player the online Bukkit player
      * @return the raw payload bytes
      */
-    public static byte[] payload(ServerPlayer sp) {
-        var velocity = sp.getDeltaMovement();
-        return payload(
-                sp.getUUID(),
-                sp.getX(), sp.getY(), sp.getZ(),
-                sp.getXRot(), sp.getYRot(), sp.getYHeadRot(),
-                velocity.x, velocity.y, velocity.z,
-                sp.getGameProfile(),
-                sp.gameMode.getGameModeForPlayer().getId());
+    public static byte[] payload(Player player) {
+        PlayerProfile profile = player.getPlayerProfile();
+        UUID profileId = profile.getId();
+        if (profileId == null) {
+            profileId = player.getUniqueId();
+        }
+        String profileName = profile.getName();
+        if (profileName == null) {
+            profileName = player.getName();
+        }
+
+        // Convert Paper ProfileProperty → String[] triples [name, value, signature]
+        List<String[]> props = new ArrayList<>();
+        for (ProfileProperty prop : profile.getProperties()) {
+            props.add(new String[]{prop.getName(), prop.getValue(), prop.getSignature()});
+        }
+
+        return build(
+                player.getUniqueId(),
+                player.getLocation().getX(),
+                player.getLocation().getY(),
+                player.getLocation().getZ(),
+                player.getLocation().getPitch(),
+                player.getLocation().getYaw(),
+                player.getLocation().getYaw(),   // yHeadRot = yaw (same as Flashback/NMS convention)
+                player.getVelocity().getX(),
+                player.getVelocity().getY(),
+                player.getVelocity().getZ(),
+                profileId,
+                profileName,
+                props,
+                gameModeId(player.getGameMode()));
     }
 
     /**
-     * Builds the payload from primitive values. Intended for unit testing the field order without
-     * a running server.
+     * Builds the payload from explicit primitive values plus a manually specified GameProfile.
+     * Package-private so unit tests can assert the exact byte sequence for a known fixed input.
      *
-     * @param uuid       player UUID
-     * @param x          position x
-     * @param y          position y
-     * @param z          position z
-     * @param xRot       yaw rotation
-     * @param yRot       pitch rotation
-     * @param yHeadRot   head yaw rotation
-     * @param vx         velocity x
-     * @param vy         velocity y
-     * @param vz         velocity z
-     * @param profile    the player's {@link GameProfile} (with skin properties)
-     * @param gameModeId the vanilla {@link net.minecraft.world.level.GameType} id
+     * @param uuid         player UUID
+     * @param x            position x
+     * @param y            position y
+     * @param z            position z
+     * @param xRot         pitch rotation
+     * @param yRot         yaw rotation
+     * @param yHeadRot     head yaw rotation
+     * @param vx           velocity x
+     * @param vy           velocity y
+     * @param vz           velocity z
+     * @param profileId    GameProfile UUID
+     * @param profileName  GameProfile name
+     * @param props        profile properties as {@code [name, value, signature]} arrays
+     *                     (signature element may be {@code null})
+     * @param gameModeId   vanilla game-mode id (SURVIVAL=0, CREATIVE=1, ADVENTURE=2, SPECTATOR=3)
      * @return the raw payload bytes
      */
-    public static byte[] payload(
+    static byte[] build(
             UUID uuid,
             double x, double y, double z,
             float xRot, float yRot, float yHeadRot,
             double vx, double vy, double vz,
-            GameProfile profile,
+            UUID profileId, String profileName, List<String[]> props,
             int gameModeId) {
 
-        // Use a RegistryFriendlyByteBuf so that ByteBufCodecs.GAME_PROFILE (a StreamCodec) can
-        // operate on it. RegistryFriendlyByteBuf.decorator applied to a plain heap buffer gives us
-        // all standard write helpers plus the codec support.
-        ByteBuf inner = Unpooled.buffer(76 + 64); // 76-byte fixed prefix + room for profile/varint
-        RegistryFriendlyByteBuf buf =
-                RegistryFriendlyByteBuf.decorator(
-                        net.minecraft.core.RegistryAccess.EMPTY).apply(inner);
         try {
-            // 1. UUID (msb first, lsb second — matches writeUUID)
-            buf.writeLong(uuid.getMostSignificantBits());
-            buf.writeLong(uuid.getLeastSignificantBits());
-            // 2. position
-            buf.writeDouble(x);
-            buf.writeDouble(y);
-            buf.writeDouble(z);
-            // 3. rotations
-            buf.writeFloat(xRot);
-            buf.writeFloat(yRot);
-            buf.writeFloat(yHeadRot);
-            // 4. velocity
-            buf.writeDouble(vx);
-            buf.writeDouble(vy);
-            buf.writeDouble(vz);
-            // 5. GameProfile
-            ByteBufCodecs.GAME_PROFILE.encode(buf, profile);
-            // 6. gameModeId as varint
-            buf.writeVarInt(gameModeId);
+            ByteArrayOutputStream baos = new ByteArrayOutputStream(76 + 64);
+            DataOutputStream dos = new DataOutputStream(baos);
 
-            return ByteBufUtil.getBytes(buf);
-        } finally {
-            buf.release();
+            // 1. UUID (msb first, lsb second)
+            dos.writeLong(uuid.getMostSignificantBits());
+            dos.writeLong(uuid.getLeastSignificantBits());
+
+            // 2. Position
+            dos.writeDouble(x);
+            dos.writeDouble(y);
+            dos.writeDouble(z);
+
+            // 3. Rotations
+            dos.writeFloat(xRot);
+            dos.writeFloat(yRot);
+            dos.writeFloat(yHeadRot);
+
+            // 4. Velocity
+            dos.writeDouble(vx);
+            dos.writeDouble(vy);
+            dos.writeDouble(vz);
+
+            // 5. GameProfile (manual MC wire format)
+            writeGameProfile(dos, profileId, profileName, props);
+
+            // 6. gameModeId as varint
+            VarCodec.writeVarInt(dos, gameModeId);
+
+            dos.flush();
+            return baos.toByteArray();
+        } catch (IOException e) {
+            // ByteArrayOutputStream never throws — propagate as unchecked if it somehow does
+            throw new RuntimeException("Failed to build create_local_player payload", e);
         }
     }
 
     /**
-     * Writes only the fixed-size prefix (UUID + positions + rotations + velocity) into a plain
-     * {@link ByteBuf}. Exposed for unit tests that want to verify the 76-byte field order without
-     * needing {@code GAME_PROFILE} codec or a registry.
+     * Serializes a GameProfile in Minecraft wire format (matches
+     * {@code ByteBufCodecs.GAME_PROFILE}):
+     * <ol>
+     *   <li>UUID — two longs (msb, lsb)</li>
+     *   <li>name — varint-length-prefixed UTF-8 string</li>
+     *   <li>property count — varint</li>
+     *   <li>per property: name string, value string, optional-signature boolean + string</li>
+     * </ol>
+     */
+    private static void writeGameProfile(
+            DataOutputStream out,
+            UUID id,
+            String name,
+            List<String[]> props) throws IOException {
+
+        // UUID
+        out.writeLong(id.getMostSignificantBits());
+        out.writeLong(id.getLeastSignificantBits());
+
+        // Name
+        VarCodec.writeString(out, name);
+
+        // Properties
+        VarCodec.writeVarInt(out, props.size());
+        for (String[] prop : props) {
+            String propName = prop[0];
+            String propValue = prop[1];
+            String propSignature = prop.length > 2 ? prop[2] : null;
+
+            VarCodec.writeString(out, propName);
+            VarCodec.writeString(out, propValue);
+            // Optional signature
+            boolean hasSig = propSignature != null;
+            out.writeBoolean(hasSig);
+            if (hasSig) {
+                VarCodec.writeString(out, propSignature);
+            }
+        }
+    }
+
+    /**
+     * Writes only the fixed-size prefix (UUID + positions + rotations + velocity) using plain Java
+     * I/O. Exposed for unit tests that want to verify the 76-byte field order without needing a
+     * GameProfile or a server.
      *
      * @return a 76-byte array
      */
@@ -125,22 +198,38 @@ public final class CreateLocalPlayerAction {
             float xRot, float yRot, float yHeadRot,
             double vx, double vy, double vz) {
 
-        ByteBuf buf = Unpooled.buffer(76);
         try {
-            buf.writeLong(uuid.getMostSignificantBits());
-            buf.writeLong(uuid.getLeastSignificantBits());
-            buf.writeDouble(x);
-            buf.writeDouble(y);
-            buf.writeDouble(z);
-            buf.writeFloat(xRot);
-            buf.writeFloat(yRot);
-            buf.writeFloat(yHeadRot);
-            buf.writeDouble(vx);
-            buf.writeDouble(vy);
-            buf.writeDouble(vz);
-            return ByteBufUtil.getBytes(buf);
-        } finally {
-            buf.release();
+            ByteArrayOutputStream baos = new ByteArrayOutputStream(76);
+            DataOutputStream dos = new DataOutputStream(baos);
+
+            dos.writeLong(uuid.getMostSignificantBits());
+            dos.writeLong(uuid.getLeastSignificantBits());
+            dos.writeDouble(x);
+            dos.writeDouble(y);
+            dos.writeDouble(z);
+            dos.writeFloat(xRot);
+            dos.writeFloat(yRot);
+            dos.writeFloat(yHeadRot);
+            dos.writeDouble(vx);
+            dos.writeDouble(vy);
+            dos.writeDouble(vz);
+
+            dos.flush();
+            return baos.toByteArray();
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to write primitive prefix", e);
         }
+    }
+
+    /**
+     * Maps a Bukkit {@link GameMode} to the vanilla game-mode id used in MC wire format.
+     */
+    private static int gameModeId(GameMode mode) {
+        return switch (mode) {
+            case SURVIVAL -> 0;
+            case CREATIVE -> 1;
+            case ADVENTURE -> 2;
+            case SPECTATOR -> 3;
+        };
     }
 }
