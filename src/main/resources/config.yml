@@ -11,3 +11,13 @@ clips:
   # The clip is saved to plugins/FlashbackServer/clips/<name>-clip-N.flashback.
   # Default: true
   auto-clip-on-death: true
+
+telemetry:
+  # Anonymous, opt-out usage telemetry (no player data, no IPs). Set to false to disable.
+  # Sent: server platform/version, plugin version, recording/clip counts & sizes, error class names.
+  enabled: true
+  posthog:
+    # PostHog ingestion host. Use https://eu.i.posthog.com if your PostHog project is on EU Cloud.
+    host: "https://us.i.posthog.com"
+    # PostHog project API key (public/write-only). Replace with your own project's key.
+    project-key: "phc_zdMj4p5wo8EvfVApjb2EbfUHJ76zgYGM5wAGz5YJC359"

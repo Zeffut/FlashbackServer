@@ -41,6 +41,14 @@ public final class PaperTestServer implements AutoCloseable {
         Files.writeString(runDir.resolve("server.properties"),
             "online-mode=false\nserver-port=" + port + "\nlevel-type=minecraft\\:flat\nspawn-protection=0\n");
 
+        // Disable telemetry in integration tests so no HTTP POSTs are made to PostHog.
+        // saveDefaultConfig() won't overwrite an existing file, so writing this before server start
+        // ensures telemetry.enabled=false for all ITs.
+        Path pluginConfigDir = runDir.resolve("plugins").resolve("FlashbackServer");
+        Files.createDirectories(pluginConfigDir);
+        Files.writeString(pluginConfigDir.resolve("config.yml"),
+            "telemetry:\n  enabled: false\n");
+
         String pluginJar = System.getProperty("flashback.plugin.jar");
         if (pluginJar == null) throw new IllegalStateException("flashback.plugin.jar system property not set");
         Files.copy(Path.of(pluginJar), runDir.resolve("plugins").resolve("FlashbackServer.jar"),

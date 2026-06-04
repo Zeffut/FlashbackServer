@@ -98,7 +98,28 @@ the Flashback client against your specific server version.
 
 ## Telemetry
 
-None currently.
+Flashback Server collects **anonymous, opt-out** usage telemetry to help improve the plugin.
+**No player data (names, UUIDs, IPs) is ever collected.**
+
+What is sent:
+
+| Event | Properties |
+|---|---|
+| `plugin_enabled` | Server platform (Paper/Folia), server version, Minecraft version, plugin version |
+| `recording_saved` | File size in bytes |
+| `recording_failed` | Exception class name only (e.g. `IOException`) |
+| `clip_saved` | File size in bytes |
+| `clip_failed` | Exception class name only |
+
+All events are sent to [PostHog](https://posthog.com/) and include an anonymous server-scoped random UUID
+(stored in `plugins/FlashbackServer/.telemetry-id`) — it is not linked to any player or operator identity.
+
+**To disable**, set in `plugins/FlashbackServer/config.yml`:
+
+```yaml
+telemetry:
+  enabled: false
+```
 
 ## License
 

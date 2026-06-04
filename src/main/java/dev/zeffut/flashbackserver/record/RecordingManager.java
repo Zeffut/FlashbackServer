@@ -5,13 +5,16 @@ import dev.zeffut.flashbackserver.capture.PacketSink;
 import dev.zeffut.flashbackserver.platform.PlatformScheduler;
 import dev.zeffut.flashbackserver.snapshot.McVersions;
 import dev.zeffut.flashbackserver.snapshot.SnapshotBuilder;
+import dev.zeffut.flashbackserver.telemetry.Telemetry;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.Plugin;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -20,11 +23,14 @@ public final class RecordingManager implements Listener {
 
     private final Plugin plugin;
     private final Path outputDir;
+    private final Telemetry telemetry;
     private final ConcurrentHashMap<UUID, Active> active = new ConcurrentHashMap<>();
     private record Active(FlashbackRecorder recorder, TickClock clock, Path output, PacketSink sink) {}
 
-    public RecordingManager(Plugin plugin, Path outputDir) {
-        this.plugin = plugin; this.outputDir = outputDir;
+    public RecordingManager(Plugin plugin, Path outputDir, Telemetry telemetry) {
+        this.plugin = plugin;
+        this.outputDir = outputDir;
+        this.telemetry = telemetry;
     }
 
     public boolean start(Player player) {
@@ -65,9 +71,13 @@ public final class RecordingManager implements Listener {
             try {
                 a.recorder().stop();                 // file write, off the server threads
                 plugin.getLogger().info("Saved replay: " + a.output());
+                long fileBytes = -1;
+                try { fileBytes = Files.size(a.output()); } catch (Exception ignored) {}
+                telemetry.capture("recording_saved", Map.of("file_bytes", fileBytes));
                 future.complete(a.output());
             } catch (Exception e) {
-                plugin.getLogger().warning("Failed to write replay for " + player.getName() + ": " + e.getMessage());
+                plugin.getLogger().warning("Failed to write replay: " + e.getMessage());
+                telemetry.capture("recording_failed", Map.of("reason_class", e.getClass().getSimpleName()));
                 future.completeExceptionally(e);
             }
         });

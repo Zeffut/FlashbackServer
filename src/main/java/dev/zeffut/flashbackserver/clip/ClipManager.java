@@ -8,15 +8,18 @@ import dev.zeffut.flashbackserver.record.ReplayFiles;
 import dev.zeffut.flashbackserver.record.TickClock;
 import dev.zeffut.flashbackserver.snapshot.McVersions;
 import dev.zeffut.flashbackserver.snapshot.SnapshotBuilder;
+import dev.zeffut.flashbackserver.telemetry.Telemetry;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.Plugin;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -28,6 +31,7 @@ public final class ClipManager implements Listener {
     private final Plugin plugin;
     private final Path outputDir;
     private final int windowSeconds;
+    private final Telemetry telemetry;
     private final ConcurrentHashMap<UUID, Armed> armed = new ConcurrentHashMap<>();
     private final AtomicInteger clipCounter = new AtomicInteger();
 
@@ -38,10 +42,11 @@ public final class ClipManager implements Listener {
             AtomicReference<List<ReplayAction>> cachedConfig,
             AtomicBoolean keyframeBuilding) {}
 
-    public ClipManager(Plugin plugin, Path outputDir, int windowSeconds) {
+    public ClipManager(Plugin plugin, Path outputDir, int windowSeconds, Telemetry telemetry) {
         this.plugin = plugin;
         this.outputDir = outputDir;
         this.windowSeconds = windowSeconds;
+        this.telemetry = telemetry;
     }
 
     /** Arms a rolling clip buffer for the player. Returns false if already armed. */
@@ -130,9 +135,13 @@ public final class ClipManager implements Listener {
                 ReplayFiles.write(out, name, McVersions.protocolVersion(), McVersions.dataVersion(),
                     snapshot, stream, ticks);
                 plugin.getLogger().info("Saved clip: " + out);
+                long fileBytes = -1;
+                try { fileBytes = Files.size(out); } catch (Exception ignored) {}
+                telemetry.capture("clip_saved", Map.of("file_bytes", fileBytes));
                 future.complete(out);
             } catch (Exception e) {
-                plugin.getLogger().warning("Failed to write clip for " + name + ": " + e.getMessage());
+                plugin.getLogger().warning("Failed to write clip: " + e.getMessage());
+                telemetry.capture("clip_failed", Map.of("reason_class", e.getClass().getSimpleName()));
                 future.completeExceptionally(e);
             }
         });
