@@ -66,8 +66,8 @@ public final class ClipManager implements Listener {
         Armed a = armed.get(player.getUniqueId());
         CompletableFuture<Path> future = new CompletableFuture<>();
         if (a == null) { future.complete(null); return future; }
-        List<ReplayAction> actions = a.buffer().snapshotClip();
-        int ticks = a.buffer().tickCount();
+        List<ReplayAction> actions = a.buffer().clipStreamActions();
+        int ticks = a.buffer().clipTickCount();
         String name = player.getName();
         Path out = outputDir.resolve(name + "-clip-" + clipCounter.incrementAndGet() + ".flashback");
         PlatformScheduler.async(plugin, () -> {
