@@ -16,7 +16,7 @@ class FlashbackContainerTest {
         meta.totalTicks = 20;
         meta.chunks.put("c0.flashback", new ChunkMeta(20));
 
-        byte[] chunk = ChunkWriter.write(new byte[]{9},
+        byte[] chunk = ChunkWriter.write(List.of(),
             List.of(new ReplayAction("flashback:action/next_tick", new byte[0])));
 
         try (var writer = FlashbackContainer.create(file)) {

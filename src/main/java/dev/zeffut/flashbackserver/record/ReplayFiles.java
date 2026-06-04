@@ -7,10 +7,10 @@ import java.util.List;
 public final class ReplayFiles {
     private ReplayFiles() {}
 
-    /** Writes a single-chunk .flashback from the given actions. tickCount = number of next_tick actions. */
+    /** Writes a single-chunk .flashback from the given snapshot and stream actions. tickCount = number of next_tick actions. */
     public static void write(Path output, String playerName, int protocolVersion, int dataVersion,
-                             List<ReplayAction> actions, int tickCount) throws Exception {
-        byte[] chunk = ChunkWriter.write(new byte[0], actions);
+                             List<ReplayAction> snapshotActions, List<ReplayAction> streamActions, int tickCount) throws Exception {
+        byte[] chunk = ChunkWriter.write(snapshotActions, streamActions);
         FlashbackMeta meta = new FlashbackMeta();
         meta.name = playerName;
         meta.versionString = "1.21.5";

@@ -71,7 +71,7 @@ public final class ClipManager implements Listener {
         Path out = outputDir.resolve(name + "-clip-" + clipCounter.incrementAndGet() + ".flashback");
         PlatformScheduler.async(plugin, () -> {
             try {
-                ReplayFiles.write(out, name, 769, 4189, actions, ticks);
+                ReplayFiles.write(out, name, 769, 4189, List.of(), actions, ticks);
                 plugin.getLogger().info("Saved clip: " + out);
                 future.complete(out);
             } catch (Exception e) {

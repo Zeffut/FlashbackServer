@@ -6,22 +6,55 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ChunkCodecTest {
+
+    /** Basic round-trip with an empty snapshot. */
     @Test
-    void chunkRoundTrips() throws Exception {
-        byte[] snapshot = new byte[]{1, 2, 3, 4};
-        var actions = List.of(
+    void chunkRoundTripsEmptySnapshot() throws Exception {
+        var streamActions = List.of(
             new ReplayAction("flashback:game_packet", new byte[]{10, 20}),
             new ReplayAction("flashback:action/next_tick", new byte[0]),
             new ReplayAction("flashback:game_packet", new byte[]{30})
         );
 
-        byte[] bytes = ChunkWriter.write(snapshot, actions);
+        byte[] bytes = ChunkWriter.write(List.of(), streamActions);
         ChunkReader.Result result = ChunkReader.read(bytes);
 
-        assertArrayEquals(snapshot, result.snapshot());
-        assertEquals(actions.size(), result.actions().size());
-        assertEquals("flashback:action/next_tick", result.actions().get(1).identifier());
-        assertArrayEquals(new byte[]{30}, result.actions().get(2).payload());
+        assertTrue(result.snapshotActions().isEmpty());
+        assertEquals(streamActions.size(), result.streamActions().size());
+        assertEquals("flashback:action/next_tick", result.streamActions().get(1).identifier());
+        assertArrayEquals(new byte[]{30}, result.streamActions().get(2).payload());
+    }
+
+    /**
+     * Round-trip with a non-empty snapshot. Snapshot and stream share ONE registry,
+     * so snapshot action-ids resolve correctly on read.
+     */
+    @Test
+    void chunkRoundTripsNonEmptySnapshot() throws Exception {
+        var snapshotActions = List.of(
+            new ReplayAction("flashback:action/game_packet", new byte[]{1, 2}),
+            new ReplayAction("flashback:action/create_local_player", new byte[]{3, 4, 5})
+        );
+        var streamActions = List.of(
+            new ReplayAction("flashback:action/game_packet", new byte[]{10, 20}),
+            new ReplayAction("flashback:action/next_tick", new byte[0]),
+            new ReplayAction("flashback:action/game_packet", new byte[]{30})
+        );
+
+        byte[] bytes = ChunkWriter.write(snapshotActions, streamActions);
+        ChunkReader.Result result = ChunkReader.read(bytes);
+
+        // Snapshot actions round-trip correctly
+        assertEquals(2, result.snapshotActions().size());
+        assertEquals("flashback:action/game_packet", result.snapshotActions().get(0).identifier());
+        assertArrayEquals(new byte[]{1, 2}, result.snapshotActions().get(0).payload());
+        assertEquals("flashback:action/create_local_player", result.snapshotActions().get(1).identifier());
+        assertArrayEquals(new byte[]{3, 4, 5}, result.snapshotActions().get(1).payload());
+
+        // Stream actions round-trip correctly
+        assertEquals(3, result.streamActions().size());
+        assertEquals("flashback:action/next_tick", result.streamActions().get(1).identifier());
+        assertArrayEquals(new byte[]{30}, result.streamActions().get(2).payload());
     }
 
     @Test

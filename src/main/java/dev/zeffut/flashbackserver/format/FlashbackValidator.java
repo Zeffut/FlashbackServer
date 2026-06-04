@@ -39,7 +39,7 @@ public final class FlashbackValidator {
                 }
                 try {
                     ChunkReader.Result result = ChunkReader.read(reader.readChunk(name));
-                    long ticks = result.actions().stream()
+                    long ticks = result.streamActions().stream()
                         .filter(a -> a.identifier().equals("flashback:action/next_tick")).count();
                     if (ticks != entry.getValue().duration) {
                         problems.add("chunk " + name + " tick mismatch: declared "

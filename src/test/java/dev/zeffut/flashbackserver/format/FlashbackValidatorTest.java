@@ -13,7 +13,7 @@ class FlashbackValidatorTest {
         meta.name = "valid";
         meta.totalTicks = 2;
         meta.chunks.put("c0.flashback", new ChunkMeta(2));
-        byte[] chunk = ChunkWriter.write(new byte[]{1}, List.of(
+        byte[] chunk = ChunkWriter.write(List.of(), List.of(
             new ReplayAction("flashback:action/next_tick", new byte[0]),
             new ReplayAction("flashback:action/next_tick", new byte[0])));
         try (var w = FlashbackContainer.create(file)) {
@@ -49,7 +49,7 @@ class FlashbackValidatorTest {
         var meta = new FlashbackMeta();
         meta.totalTicks = 5;
         meta.chunks.put("c0.flashback", new ChunkMeta(5)); // claims 5 ticks
-        byte[] chunk = ChunkWriter.write(new byte[]{1}, List.of(    // but only 1 next_tick present
+        byte[] chunk = ChunkWriter.write(List.of(), List.of(    // but only 1 next_tick present
             new ReplayAction("flashback:action/next_tick", new byte[0])));
         try (var w = FlashbackContainer.create(file)) {
             w.writeMetadata(meta);

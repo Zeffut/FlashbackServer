@@ -3,6 +3,7 @@ package dev.zeffut.flashbackserver.record;
 import dev.zeffut.flashbackserver.capture.PacketCapture;
 import dev.zeffut.flashbackserver.capture.PacketSink;
 import dev.zeffut.flashbackserver.platform.PlatformScheduler;
+import dev.zeffut.flashbackserver.snapshot.SnapshotBuilder;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -36,6 +37,18 @@ public final class RecordingManager implements Listener {
         if (active.putIfAbsent(id, new Active(recorder, clock, out, sink)) != null) return false;
         PacketCapture.injectRaw(player, sink);
         clock.start(recorder::onTick);
+
+        // Build the initial-state snapshot on the player's region thread (Folia) / main thread (Paper).
+        // The capture can run immediately; the snapshot just needs to be set before stop() writes.
+        player.getScheduler().run(plugin, t -> {
+            try {
+                recorder.setSnapshot(SnapshotBuilder.build(player));
+            } catch (Exception e) {
+                plugin.getLogger().warning("SnapshotBuilder failed for " + player.getName()
+                        + " — recording will have empty snapshot: " + e.getMessage());
+            }
+        }, null);
+
         return true;
     }
 

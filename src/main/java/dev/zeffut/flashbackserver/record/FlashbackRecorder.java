@@ -22,11 +22,27 @@ public final class FlashbackRecorder {
     private int tickCount = 0;
     private boolean stopped = false;
 
+    /** Initial-state snapshot actions; set once before stop() via setSnapshot(). */
+    private List<ReplayAction> snapshot = List.of();
+
     public FlashbackRecorder(Path output, String playerName, int protocolVersion, int dataVersion) {
         this.output          = output;
         this.playerName      = playerName;
         this.protocolVersion = protocolVersion;
         this.dataVersion     = dataVersion;
+    }
+
+    /**
+     * Sets the initial-state snapshot actions. Must be called before stop().
+     * Safe to call from the region/main thread while recording is in progress.
+     */
+    public void setSnapshot(List<ReplayAction> snapshot) {
+        lock.lock();
+        try {
+            this.snapshot = List.copyOf(snapshot);
+        } finally {
+            lock.unlock();
+        }
     }
 
     /** May be called from the Netty I/O thread. */
@@ -54,19 +70,21 @@ public final class FlashbackRecorder {
 
     /** Idempotent: second and subsequent calls are no-ops. */
     public void stop() throws Exception {
-        List<ReplayAction> snapshot;
+        List<ReplayAction> snapshotCopy;
+        List<ReplayAction> streamCopy;
         int ticks;
 
         lock.lock();
         try {
             if (stopped) return;
             stopped = true;
-            snapshot = new ArrayList<>(actions);
-            ticks    = tickCount;
+            snapshotCopy = new ArrayList<>(snapshot);
+            streamCopy   = new ArrayList<>(actions);
+            ticks        = tickCount;
         } finally {
             lock.unlock();
         }
 
-        ReplayFiles.write(output, playerName, protocolVersion, dataVersion, snapshot, ticks);
+        ReplayFiles.write(output, playerName, protocolVersion, dataVersion, snapshotCopy, streamCopy, ticks);
     }
 }
