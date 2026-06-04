@@ -28,7 +28,13 @@ public final class FlashbackServerPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(
             new dev.zeffut.flashbackserver.clip.ClipDeathListener(clipManager, autoClip), this);
         getCommand("replay").setExecutor(
-            new dev.zeffut.flashbackserver.command.ReplayCommand(manager, clipManager));
+            new dev.zeffut.flashbackserver.command.ReplayCommand(
+                manager,
+                clipManager,
+                replays,
+                clipsDir,
+                () -> ((org.bukkit.craftbukkit.CraftServer) getServer()).getServer().registryAccess(),
+                getLogger()));
 
         getLogger().info("FlashbackServer enabled.");
     }
