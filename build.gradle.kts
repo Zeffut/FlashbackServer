@@ -1,7 +1,10 @@
 plugins {
     java
-    id("io.papermc.paperweight.userdev") version "2.0.0-beta.18"
+    // Declared here so subprojects can apply them; not applied to the root itself.
+    id("io.papermc.paperweight.userdev") version "2.0.0-beta.18" apply false
     id("xyz.jpenilla.run-paper") version "3.0.2"
+    // Shadow assembles the single bundled plugin jar.
+    id("com.gradleup.shadow") version "8.3.6"
 }
 
 java {
@@ -15,35 +18,49 @@ repositories {
 }
 
 dependencies {
-    paperweight.paperDevBundle("1.21.5-R0.1-SNAPSHOT")
-    // Gson is provided by the Paper server at runtime — compile against it but don't bundle it.
-    compileOnly("com.google.code.gson:gson:2.11.0")
-    testImplementation("com.google.code.gson:gson:2.11.0")
-    testImplementation(platform("org.junit:junit-bom:5.11.3"))
-    testImplementation("org.junit.jupiter:junit-jupiter")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-    testImplementation("org.geysermc.mcprotocollib:protocol:1.21.5-1")
+    // Bundle :core compiled classes + resources (plugin.yml/config.yml) into the shaded jar.
+    implementation(project(":core"))
 }
 
-tasks.test {
-    useJUnitPlatform { excludeTags("integration") }
+// ── Bundled plugin jar ─────────────────────────────────────────────────────
+// The final deployable jar = :core classes + resources + the REOBF'd :nms:v1_21_5 adapter classes.
+// Paper's PluginRemapper remaps the (mojang→spigot) nms references in the reobf classes at load.
+// Ensure the nms subproject is configured first so its paperweight `reobfJar` task exists.
+evaluationDependsOn(":nms:v1_21_5")
+val nmsReobfJar = project(":nms:v1_21_5").tasks.named("reobfJar")
+
+tasks.shadowJar {
+    archiveClassifier.set("")
+    // Pull in the remapped NMS adapter classes (not the mojang-mapped ones).
+    dependsOn(nmsReobfJar)
+    from(zipTree(nmsReobfJar.map { it.outputs.files.singleFile })) {
+        // reobfJar produces a full jar; we only want the class files (plugin.yml comes from :core).
+        include("dev/zeffut/flashbackserver/version/v1_21_5/**")
+    }
 }
+
+tasks.build {
+    dependsOn(tasks.shadowJar)
+}
+
+// ── Integration tests ──────────────────────────────────────────────────────
+// The harness (in :core test) deploys the BUNDLED root jar via the flashback.plugin.jar property.
 val integrationTest by tasks.registering(Test::class) {
+    val coreTest = project(":core").extensions
+        .getByType<SourceSetContainer>()["test"]
     useJUnitPlatform { includeTags("integration") }
-    testClassesDirs = sourceSets.test.get().output.classesDirs
-    classpath = sourceSets.test.get().runtimeClasspath
-    dependsOn(tasks.reobfJar)
-    systemProperty("flashback.plugin.jar", tasks.reobfJar.get().outputJar.get().asFile.absolutePath)
-    shouldRunAfter(tasks.test)
-}
-
-tasks.processResources {
-    // Single source of truth for the version: expand ${version} in plugin.yml from gradle.properties.
-    val props = mapOf("version" to project.version.toString())
-    inputs.properties(props)
-    filesMatching("plugin.yml") { expand(props) }
+    testClassesDirs = coreTest.output.classesDirs
+    classpath = coreTest.runtimeClasspath
+    dependsOn(tasks.shadowJar)
+    systemProperty(
+        "flashback.plugin.jar",
+        tasks.shadowJar.get().archiveFile.get().asFile.absolutePath
+    )
+    shouldRunAfter(project(":core").tasks.named("test"))
 }
 
 tasks.runServer {
     minecraftVersion("1.21.5")
+    // Run the bundled jar so manual testing matches the deployed artifact.
+    pluginJars(tasks.shadowJar.flatMap { it.archiveFile })
 }
