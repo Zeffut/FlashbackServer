@@ -22,7 +22,7 @@ mod required for the players being recorded. Drop the jar in `/plugins`, and you
 
 | | Flashback Server | Paper Flashback | server-replay |
 |---|:---:|:---:|:---:|
-| Platform | Paper/Folia 1.21.x | Paper | Fabric |
+| Platform | Paper/Folia 1.21.5–1.21.11 | Paper | Fabric |
 | ProtocolLib required | ❌ **No** | ✅ Yes | — |
 | Folia support | ✅ **Yes** | ❌ No | — |
 | Clip system (save last N seconds) | ✅ **Yes** | ❌ No | ❌ No |
@@ -30,7 +30,7 @@ mod required for the players being recorded. Drop the jar in `/plugins`, and you
 
 ## Installation
 
-1. Requires **Paper** (or a Paper fork such as Folia) for **Minecraft 1.21.5**.
+1. Requires **Paper** (or a Paper fork such as Folia) for **Minecraft 1.21.5–1.21.11**.
 2. Drop `FlashbackServer-*.jar` into your server's `plugins/` folder.
 3. Restart the server. No additional dependencies needed.
 4. View recorded replays with the [Flashback](https://modrinth.com/mod/flashback) client mod.
@@ -83,7 +83,7 @@ changes trigger a fresh snapshot.
 
 ## Compatibility
 
-- Minecraft **1.21.5**
+- Minecraft **1.21.5–1.21.11**
 - [Paper](https://papermc.io/) and Paper forks (Purpur, Pufferfish, **Folia**)
 - Replays are viewed with the [Flashback](https://modrinth.com/mod/flashback) client mod
 

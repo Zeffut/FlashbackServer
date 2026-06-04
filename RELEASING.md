@@ -59,7 +59,7 @@ git push origin v<version>
 ## 5. Modrinth upload (manual — your account)
 
 Create the project on Modrinth using the metadata in [`docs/modrinth.md`](docs/modrinth.md):
-- Project type: **Plugin**; loaders: **Paper, Purpur, Folia**; MC version: **1.21.5**.
+- Project type: **Plugin**; loaders: **Paper, Purpur, Folia**; MC versions: **1.21.5–1.21.11**.
 - Upload the `FlashbackServer-<version>-reobf.jar`, mark it as the primary file.
 - Paste the summary/description/tags from `docs/modrinth.md`. Link the GitHub source. License: **MIT**.
 - Note the independence disclaimer (not affiliated with the Flashback mod).
