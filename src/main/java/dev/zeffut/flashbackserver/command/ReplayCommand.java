@@ -6,6 +6,7 @@ import dev.zeffut.flashbackserver.verify.ReplayDecodeVerifier;
 import net.minecraft.core.RegistryAccess;
 import org.bukkit.command.*;
 import org.bukkit.entity.Player;
+import org.bukkit.plugin.Plugin;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -13,8 +14,15 @@ import java.util.function.Supplier;
 import java.util.logging.Logger;
 
 public final class ReplayCommand implements CommandExecutor {
-    private static final String USAGE =
-            "Usage: /replay <start|stop> players <player> | /replay clip <arm|disarm|save> <player> | /replay verify <file>";
+    private static final List<String> HELP_LINES = List.of(
+            "/replay start players <player>   - start recording a player",
+            "/replay stop players <player>    - stop & save a recording",
+            "/replay clip arm <player>        - start a rolling clip buffer",
+            "/replay clip disarm <player>     - stop the clip buffer",
+            "/replay clip save <player>       - save the current clip",
+            "/replay verify <file>            - decode-check a saved replay",
+            "/replay help                     - this help"
+    );
 
     private final RecordingManager manager;
     private final ClipManager clipManager;
@@ -22,6 +30,7 @@ public final class ReplayCommand implements CommandExecutor {
     private final Path clipsDir;
     private final Supplier<RegistryAccess> registryAccess;
     private final Logger logger;
+    private final Plugin plugin;
 
     public ReplayCommand(
             RecordingManager manager,
@@ -29,27 +38,45 @@ public final class ReplayCommand implements CommandExecutor {
             Path replaysDir,
             Path clipsDir,
             Supplier<RegistryAccess> registryAccess,
-            Logger logger) {
+            Logger logger,
+            Plugin plugin) {
         this.manager = manager;
         this.clipManager = clipManager;
         this.replaysDir = replaysDir;
         this.clipsDir = clipsDir;
         this.registryAccess = registryAccess;
         this.logger = logger;
+        this.plugin = plugin;
+    }
+
+    private void sendHelp(CommandSender sender) {
+        for (String line : HELP_LINES) {
+            sender.sendMessage(line);
+        }
     }
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (!sender.hasPermission("flashbackserver.replay")) {
+            sender.sendMessage("You don't have permission to use /replay.");
+            return true;
+        }
+
         if (args.length == 0) {
-            sender.sendMessage(USAGE);
+            sendHelp(sender);
             return true;
         }
 
         String sub = args[0];
 
+        if (sub.equalsIgnoreCase("help")) {
+            sendHelp(sender);
+            return true;
+        }
+
         if (sub.equalsIgnoreCase("start") || sub.equalsIgnoreCase("stop")) {
             if (args.length != 3 || !args[1].equalsIgnoreCase("players")) {
-                sender.sendMessage(USAGE);
+                sendHelp(sender);
                 return true;
             }
             Player target = sender.getServer().getPlayerExact(args[2]);
@@ -66,13 +93,17 @@ public final class ReplayCommand implements CommandExecutor {
                     sender.sendMessage(target.getName() + " was not being recorded");
                 } else {
                     sender.sendMessage("Stopping recording for " + target.getName() + " (writing replay…)");
-                    manager.stop(target); // async; logs "Saved replay: <path>" when the file is on disk
+                    var future = manager.stop(target);
+                    future.whenComplete((path, err) -> sender.getServer().getGlobalRegionScheduler().run(plugin, t -> {
+                        if (err != null) sender.sendMessage("Replay error: " + err.getMessage());
+                        else if (path != null) sender.sendMessage("Saved: " + path.getFileName());
+                    }));
                 }
             }
 
         } else if (sub.equalsIgnoreCase("clip")) {
             if (args.length != 3) {
-                sender.sendMessage(USAGE);
+                sendHelp(sender);
                 return true;
             }
             String action = args[1];
@@ -97,15 +128,19 @@ public final class ReplayCommand implements CommandExecutor {
                     sender.sendMessage(target.getName() + " has no clips armed");
                 } else {
                     sender.sendMessage("Saving clip for " + target.getName() + "…");
-                    clipManager.saveClip(target); // fire-and-forget; async "Saved clip: <path>" log is confirmation
+                    var future = clipManager.saveClip(target);
+                    future.whenComplete((path, err) -> sender.getServer().getGlobalRegionScheduler().run(plugin, t -> {
+                        if (err != null) sender.sendMessage("Replay error: " + err.getMessage());
+                        else if (path != null) sender.sendMessage("Saved: " + path.getFileName());
+                    }));
                 }
             } else {
-                sender.sendMessage(USAGE);
+                sendHelp(sender);
             }
 
         } else if (sub.equalsIgnoreCase("verify")) {
             if (args.length != 2) {
-                sender.sendMessage(USAGE);
+                sendHelp(sender);
                 return true;
             }
             String filename = args[1];
@@ -133,7 +168,7 @@ public final class ReplayCommand implements CommandExecutor {
             }
 
         } else {
-            sender.sendMessage(USAGE);
+            sendHelp(sender);
         }
 
         return true;
