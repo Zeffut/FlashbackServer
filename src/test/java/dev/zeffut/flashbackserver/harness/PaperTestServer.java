@@ -99,6 +99,25 @@ public final class PaperTestServer implements AutoCloseable {
     }
 
     /**
+     * Polls accumulated server log lines until one contains {@code substring} or the timeout
+     * elapses. Returns the first full line containing {@code substring}, or {@code null} on timeout.
+     */
+    public String awaitLogLineContaining(String substring, long timeoutSeconds) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + timeoutSeconds * 1000L;
+        while (System.currentTimeMillis() < deadline) {
+            for (String line : logLines) {
+                if (line.contains(substring)) return line;
+            }
+            Thread.sleep(100);
+        }
+        // one final check after deadline
+        for (String line : logLines) {
+            if (line.contains(substring)) return line;
+        }
+        return null;
+    }
+
+    /**
      * Scans accumulated log lines for any containing {@code "[capture] "}, parses the integer
      * after {@code "packets="}, and returns the maximum found (0 if none).
      */
