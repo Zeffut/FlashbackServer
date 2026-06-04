@@ -1,5 +1,6 @@
 package dev.zeffut.flashbackserver.capture;
 
+import dev.zeffut.flashbackserver.version.VersionAdapters;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.channel.Channel;
@@ -43,7 +44,7 @@ public final class PacketCapture {
                 RAW_SINKS.computeIfAbsent(id, k -> new CopyOnWriteArrayList<>());
         sinks.add(sink);
 
-        Channel channel = ChannelAccess.of(player);
+        Channel channel = VersionAdapters.current().channelOf(player);
         channel.eventLoop().execute(() -> {
             if (channel.pipeline().get(RAW_HANDLER_NAME) != null) return; // handler already present
             try {
@@ -99,7 +100,7 @@ public final class PacketCapture {
         RAW_SINKS.remove(id, sinks);
         Channel channel;
         try {
-            channel = ChannelAccess.of(player);
+            channel = VersionAdapters.current().channelOf(player);
         } catch (RuntimeException e) {
             return; // player already gone / channel unavailable
         }
@@ -119,7 +120,7 @@ public final class PacketCapture {
         RAW_SINKS.remove(id);
         Channel channel;
         try {
-            channel = ChannelAccess.of(player);
+            channel = VersionAdapters.current().channelOf(player);
         } catch (RuntimeException e) {
             return; // player already gone / channel unavailable
         }

@@ -2,15 +2,14 @@ package dev.zeffut.flashbackserver.command;
 
 import dev.zeffut.flashbackserver.clip.ClipManager;
 import dev.zeffut.flashbackserver.record.RecordingManager;
-import dev.zeffut.flashbackserver.verify.ReplayDecodeVerifier;
-import net.minecraft.core.RegistryAccess;
+import dev.zeffut.flashbackserver.verify.ReplayVerifier;
+import dev.zeffut.flashbackserver.version.VersionAdapters;
 import org.bukkit.command.*;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
 import java.nio.file.Path;
 import java.util.List;
-import java.util.function.Supplier;
 import java.util.logging.Logger;
 
 public final class ReplayCommand implements CommandExecutor {
@@ -28,7 +27,6 @@ public final class ReplayCommand implements CommandExecutor {
     private final ClipManager clipManager;
     private final Path replaysDir;
     private final Path clipsDir;
-    private final Supplier<RegistryAccess> registryAccess;
     private final Logger logger;
     private final Plugin plugin;
 
@@ -37,14 +35,12 @@ public final class ReplayCommand implements CommandExecutor {
             ClipManager clipManager,
             Path replaysDir,
             Path clipsDir,
-            Supplier<RegistryAccess> registryAccess,
             Logger logger,
             Plugin plugin) {
         this.manager = manager;
         this.clipManager = clipManager;
         this.replaysDir = replaysDir;
         this.clipsDir = clipsDir;
-        this.registryAccess = registryAccess;
         this.logger = logger;
         this.plugin = plugin;
     }
@@ -150,8 +146,8 @@ public final class ReplayCommand implements CommandExecutor {
                 return true;
             }
 
-            ReplayDecodeVerifier.Result result =
-                    ReplayDecodeVerifier.verify(target, registryAccess.get());
+            ReplayVerifier.Result result =
+                    ReplayVerifier.verify(target, VersionAdapters.current());
 
             String summary = "Verify " + filename + ": decoded=" + result.decoded()
                     + " errors=" + result.errors();

@@ -6,8 +6,8 @@ import dev.zeffut.flashbackserver.format.ReplayAction;
 import dev.zeffut.flashbackserver.platform.PlatformScheduler;
 import dev.zeffut.flashbackserver.record.ReplayFiles;
 import dev.zeffut.flashbackserver.record.TickClock;
-import dev.zeffut.flashbackserver.snapshot.McVersions;
 import dev.zeffut.flashbackserver.snapshot.SnapshotBuilder;
+import dev.zeffut.flashbackserver.version.VersionAdapters;
 import dev.zeffut.flashbackserver.telemetry.Telemetry;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -132,7 +132,8 @@ public final class ClipManager implements Listener {
         Path out = outputDir.resolve(name + "-clip-" + clipCounter.incrementAndGet() + ".flashback");
         PlatformScheduler.async(plugin, () -> {
             try {
-                ReplayFiles.write(out, name, McVersions.protocolVersion(), McVersions.dataVersion(),
+                var adapter = VersionAdapters.current();
+                ReplayFiles.write(out, name, adapter.protocolVersion(), adapter.dataVersion(),
                     snapshot, stream, ticks);
                 plugin.getLogger().info("Saved clip: " + out);
                 long fileBytes = -1;

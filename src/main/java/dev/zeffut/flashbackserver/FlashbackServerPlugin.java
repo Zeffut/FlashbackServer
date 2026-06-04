@@ -47,7 +47,6 @@ public final class FlashbackServerPlugin extends JavaPlugin {
                 clipManager,
                 replays,
                 clipsDir,
-                () -> ((org.bukkit.craftbukkit.CraftServer) getServer()).getServer().registryAccess(),
                 getLogger(),
                 this));
         replayCmd.setTabCompleter(
