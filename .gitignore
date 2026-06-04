@@ -38,4 +38,6 @@ test-output/
 spike-pipeline.log
 spike-raw.log
 spike-folia.log
+spike-synth.log
+f1-spike.log
 /io/
