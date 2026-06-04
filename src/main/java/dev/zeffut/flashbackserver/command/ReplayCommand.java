@@ -86,7 +86,7 @@ public final class ReplayCommand implements CommandExecutor {
                     sender.sendMessage(manager.start(target) ? "Recording " + target.getName()
                         : target.getName() + " is already being recorded");
                 } catch (Exception e) {
-                    sender.sendMessage("Replay error: " + e.getMessage());
+                    sender.sendMessage("Replay error: " + e);
                 }
             } else {
                 if (!manager.isRecording(target)) {
@@ -95,7 +95,7 @@ public final class ReplayCommand implements CommandExecutor {
                     sender.sendMessage("Stopping recording for " + target.getName() + " (writing replay…)");
                     var future = manager.stop(target);
                     future.whenComplete((path, err) -> sender.getServer().getGlobalRegionScheduler().run(plugin, t -> {
-                        if (err != null) sender.sendMessage("Replay error: " + err.getMessage());
+                        if (err != null) sender.sendMessage("Replay error: " + err);
                         else if (path != null) sender.sendMessage("Saved: " + path.getFileName());
                     }));
                 }
@@ -130,7 +130,7 @@ public final class ReplayCommand implements CommandExecutor {
                     sender.sendMessage("Saving clip for " + target.getName() + "…");
                     var future = clipManager.saveClip(target);
                     future.whenComplete((path, err) -> sender.getServer().getGlobalRegionScheduler().run(plugin, t -> {
-                        if (err != null) sender.sendMessage("Replay error: " + err.getMessage());
+                        if (err != null) sender.sendMessage("Replay error: " + err);
                         else if (path != null) sender.sendMessage("Saved: " + path.getFileName());
                     }));
                 }
@@ -174,12 +174,20 @@ public final class ReplayCommand implements CommandExecutor {
         return true;
     }
 
-    /** Resolves {@code filename} under replaysDir first, then clipsDir. Returns {@code null} if not found. */
+    /**
+     * Resolves {@code filename} under replaysDir first, then clipsDir, refusing any path that escapes
+     * those directories (no path traversal). Returns {@code null} if not found.
+     */
     private Path resolveReplayFile(String filename) {
-        Path inReplays = replaysDir.resolve(filename);
-        if (java.nio.file.Files.exists(inReplays)) return inReplays;
-        Path inClips = clipsDir.resolve(filename);
-        if (java.nio.file.Files.exists(inClips)) return inClips;
-        return null;
+        Path inReplays = resolveWithin(replaysDir, filename);
+        if (inReplays != null) return inReplays;
+        return resolveWithin(clipsDir, filename);
+    }
+
+    private static Path resolveWithin(Path dir, String filename) {
+        Path base = dir.normalize();
+        Path candidate = base.resolve(filename).normalize();
+        if (!candidate.startsWith(base)) return null; // path traversal attempt
+        return java.nio.file.Files.exists(candidate) ? candidate : null;
     }
 }

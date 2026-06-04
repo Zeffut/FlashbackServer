@@ -8,7 +8,8 @@ description: Server-side Flashback replay recording.
 commands:
   replay:
     description: Control server-side Flashback recordings.
-    usage: /replay <start|stop> players <player>
+    usage: /replay <start|stop|clip|verify|help> ...
+    permission: flashbackserver.replay
 permissions:
   flashbackserver.replay:
     description: Use the /replay command (record, clip, verify).
