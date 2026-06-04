@@ -16,8 +16,25 @@ public final class PaperTestServer implements AutoCloseable {
         this.runDir = runDir;
     }
 
-    /** Boots Paper with the plugin at flashback.plugin.jar on the given port; waits for readiness. */
+    /**
+     * Boots Paper (project {@code "paper"}) with the plugin on the given port; waits for readiness.
+     * Delegates to {@link #start(Path, int, String)}.
+     */
     public static PaperTestServer start(Path baseDir, int port) throws Exception {
+        return start(baseDir, port, "paper");
+    }
+
+    /**
+     * Boots the specified PaperMC-compatible server ({@code "paper"}, {@code "folia"}, …) with the
+     * plugin on the given port; waits for readiness. The jar is resolved via
+     * {@link PaperDownloader#resolve(Path, String, String)} with version {@code "1.21.5"} and cached
+     * under {@code <baseDir>/test-server/<project>.jar}.
+     *
+     * @param baseDir working base directory (a {@code run/} sub-directory is created inside)
+     * @param port    server port
+     * @param project PaperMC project name, e.g. {@code "paper"} or {@code "folia"}
+     */
+    public static PaperTestServer start(Path baseDir, int port, String project) throws Exception {
         Path runDir = baseDir.resolve("run");
         Files.createDirectories(runDir.resolve("plugins"));
         Files.writeString(runDir.resolve("eula.txt"), "eula=true\n");
@@ -29,21 +46,22 @@ public final class PaperTestServer implements AutoCloseable {
         Files.copy(Path.of(pluginJar), runDir.resolve("plugins").resolve("FlashbackServer.jar"),
             StandardCopyOption.REPLACE_EXISTING);
 
-        Path paperJar = PaperDownloader.resolve(baseDir.resolve("test-server"));
+        Path serverJar = PaperDownloader.resolve(baseDir.resolve("test-server"), project, "1.21.5");
 
         ProcessBuilder pb = new ProcessBuilder(
-            "java", "-Xmx1G", "-jar", paperJar.toAbsolutePath().toString(), "nogui")
+            "java", "-Xmx1G", "-jar", serverJar.toAbsolutePath().toString(), "nogui")
             .directory(runDir.toFile())
             .redirectErrorStream(true);
         Process process = pb.start();
 
         CountDownLatch ready = new CountDownLatch(1);
         PaperTestServer server = new PaperTestServer(process, runDir);
+        String prefix = "[" + project + "] ";
         Thread reader = new Thread(() -> {
             try (var br = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
                 String line;
                 while ((line = br.readLine()) != null) {
-                    System.out.println("[paper] " + line);
+                    System.out.println(prefix + line);
                     server.logLines.add(line);
                     if (line.contains("Done (")) ready.countDown();
                 }
@@ -54,7 +72,7 @@ public final class PaperTestServer implements AutoCloseable {
 
         if (!ready.await(180, TimeUnit.SECONDS)) {
             process.destroyForcibly();
-            throw new IllegalStateException("Paper server did not become ready within 180s");
+            throw new IllegalStateException(project + " server did not become ready within 180s");
         }
         return server;
     }
