@@ -1,5 +1,13 @@
 clips:
-  # Length of the rolling clip window, in seconds.
+  # Length of the rolling clip buffer, in seconds.
+  # When a clip is saved, the output will contain approximately window-seconds to
+  # 2×window-seconds of footage due to keyframe granularity (keyframes are inserted
+  # periodically, so the precise start point is rounded back to the nearest keyframe).
+  # Default: 30
   window-seconds: 30
+
   # Automatically save a clip when an armed player dies.
+  # Only players that have been armed via "/replay clip arm <player>" are affected.
+  # The clip is saved to plugins/FlashbackServer/clips/<name>-clip-N.flashback.
+  # Default: true
   auto-clip-on-death: true
