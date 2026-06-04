@@ -7,6 +7,8 @@ import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.ProtocolInfo;
+import net.minecraft.network.protocol.configuration.ClientConfigurationPacketListener;
+import net.minecraft.network.protocol.configuration.ConfigurationProtocols;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.GameProtocols;
 import net.minecraft.server.level.ServerPlayer;
@@ -20,6 +22,37 @@ import net.minecraft.server.level.ServerPlayer;
 public final class PacketSerializer {
 
     private PacketSerializer() {}
+
+    /**
+     * Encodes a clientbound CONFIGURATION-phase {@link Packet} and returns the
+     * {@code varint id + payload} bytes produced by the CONFIGURATION protocol codec.
+     *
+     * <p>{@code ConfigurationProtocols.CLIENTBOUND} is already bound over plain {@code FriendlyByteBuf}
+     * and requires NO registry decorator (unlike the PLAY template). A single codec instance handles
+     * all config and common-clientbound packet types; an unchecked cast bridges the
+     * {@code Packet<ClientCommonPacketListener>} used by e.g. {@code ClientboundUpdateTagsPacket}
+     * since the codec dispatches on {@code packet.type()}, not the static generic.
+     *
+     * @param packet a clientbound CONFIGURATION (or common) packet
+     * @return the raw {@code id + payload} bytes
+     * @throws RuntimeException if encoding fails
+     */
+    @SuppressWarnings("unchecked")
+    public static byte[] encodeConfigPacket(Packet<?> packet) {
+        StreamCodec<ByteBuf, Packet<? super ClientConfigurationPacketListener>> codec =
+                ConfigurationProtocols.CLIENTBOUND.codec();
+
+        ByteBuf buf = Unpooled.buffer();
+        try {
+            codec.encode(buf, (Packet<? super ClientConfigurationPacketListener>) packet);
+            return ByteBufUtil.getBytes(buf);
+        } catch (Exception e) {
+            throw new RuntimeException(
+                    "Failed to encode config packet " + packet.getClass().getSimpleName(), e);
+        } finally {
+            buf.release();
+        }
+    }
 
     /**
      * Encodes {@code packet} using the player's registry access and returns the
