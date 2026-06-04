@@ -15,16 +15,6 @@ public final class FlashbackValidator {
      */
     public record Report(boolean valid, List<String> problems, int totalTicks, int chunkCount) {}
 
-    // Clientbound PLAY packet ids for Paper 1.21.5 (confirmed via docs/research/r3-spike.md).
-    /** Paper 1.21.5 clientbound PLAY — LoginPacket id. */
-    private static final int PACKET_ID_LOGIN          = 43;
-    /** Paper 1.21.5 clientbound PLAY — PlayerPositionPacket id. */
-    private static final int PACKET_ID_POSITION       = 65;
-    /** Paper 1.21.5 clientbound PLAY — LevelChunkWithLightPacket id. */
-    private static final int PACKET_ID_LEVEL_CHUNK    = 39;
-    /** Paper 1.21.5 clientbound PLAY — PlayerInfoUpdatePacket id (nice-to-have). */
-    private static final int PACKET_ID_PLAYER_INFO    = 63;
-
     /** Identifier for the Flashback synthetic action that spawns the local player. */
     private static final String ID_CREATE_LOCAL_PLAYER = "flashback:action/create_local_player";
     /** Identifier for raw game packets captured from the wire. */
@@ -83,15 +73,27 @@ public final class FlashbackValidator {
     /**
      * Extends {@link #validate} with a snapshot-content check on the FIRST declared chunk.
      *
-     * <p>The snapshot of the first chunk must contain the "renderable floor":
+     * <p>The check is split into two layers:
+     *
+     * <p><b>Version-agnostic floor (always required):</b>
      * <ul>
-     *   <li>At least one {@code flashback:action/configuration_packet} action (registry/config
-     *       data presence).</li>
+     *   <li>At least one {@code flashback:action/configuration_packet} action.</li>
      *   <li>At least one {@code flashback:action/create_local_player} action.</li>
-     *   <li>A login game_packet (leading varint id == {@value #PACKET_ID_LOGIN}).</li>
-     *   <li>A position game_packet (leading varint id == {@value #PACKET_ID_POSITION}).</li>
-     *   <li>At least one chunk game_packet (leading varint id == {@value #PACKET_ID_LEVEL_CHUNK}).</li>
-     *   <li>A player-info game_packet (leading varint id == {@value #PACKET_ID_PLAYER_INFO}).</li>
+     *   <li>At least one {@code flashback:action/game_packet} action.</li>
+     * </ul>
+     * Missing any of the above → {@code valid=false}.
+     *
+     * <p><b>Protocol-version-specific checks (when the protocol is known):</b>
+     * The replay's {@code protocol_version} field is looked up in {@link PacketIds}.
+     * <ul>
+     *   <li>If <em>found</em>: also requires game_packets with leading varint ids equal to
+     *       {@link PacketIds.Ids#login()}, {@link PacketIds.Ids#position()},
+     *       {@link PacketIds.Ids#chunk()}, and {@link PacketIds.Ids#playerInfo()}.
+     *       Any missing → problem + {@code valid=false}.</li>
+     *   <li>If <em>not found</em> (unknown protocol): id-specific checks are skipped; an
+     *       informational problem
+     *       {@code "renderable check limited: unknown protocol N (packet ids not in table)"}
+     *       is added but does <em>not</em> flip {@code valid} to {@code false} on its own.</li>
      * </ul>
      *
      * <p>Returns {@code valid=false} listing any missing required elements if the structural
@@ -116,12 +118,16 @@ public final class FlashbackValidator {
             ChunkReader.Result result = ChunkReader.read(chunkBytes);
             List<ReplayAction> snapshot = result.snapshotActions();
 
+            // -- Scan the snapshot once, collecting presence flags --
             boolean hasConfigPacket      = false;
             boolean hasCreateLocalPlayer = false;
-            boolean hasLogin             = false;
-            boolean hasPosition          = false;
-            boolean hasChunk             = false;
-            boolean hasPlayerInfo        = false;
+            boolean hasAnyGamePacket     = false;
+
+            Optional<PacketIds.Ids> ids = PacketIds.forProtocol(meta.protocolVersion);
+            boolean hasLogin      = false;
+            boolean hasPosition   = false;
+            boolean hasChunk      = false;
+            boolean hasPlayerInfo = false;
 
             for (ReplayAction action : snapshot) {
                 if (ID_CONFIG_PACKET.equals(action.identifier())) {
@@ -129,26 +135,42 @@ public final class FlashbackValidator {
                 } else if (ID_CREATE_LOCAL_PLAYER.equals(action.identifier())) {
                     hasCreateLocalPlayer = true;
                 } else if (ID_GAME_PACKET.equals(action.identifier())) {
-                    int packetId = readLeadingVarInt(action.payload());
-                    if (packetId == PACKET_ID_LOGIN)            hasLogin       = true;
-                    else if (packetId == PACKET_ID_POSITION)    hasPosition    = true;
-                    else if (packetId == PACKET_ID_LEVEL_CHUNK) hasChunk       = true;
-                    else if (packetId == PACKET_ID_PLAYER_INFO) hasPlayerInfo  = true;
+                    hasAnyGamePacket = true;
+                    if (ids.isPresent()) {
+                        int packetId = readLeadingVarInt(action.payload());
+                        PacketIds.Ids knownIds = ids.get();
+                        if (packetId == knownIds.login())      hasLogin      = true;
+                        else if (packetId == knownIds.position())   hasPosition   = true;
+                        else if (packetId == knownIds.chunk())      hasChunk      = true;
+                        else if (packetId == knownIds.playerInfo()) hasPlayerInfo = true;
+                    }
                 }
             }
 
+            // -- Version-agnostic floor --
             if (!hasConfigPacket)
                 problems.add("snapshot missing configuration data");
             if (!hasCreateLocalPlayer)
                 problems.add("snapshot missing: flashback:action/create_local_player");
-            if (!hasLogin)
-                problems.add("snapshot missing: login game_packet (id=" + PACKET_ID_LOGIN + ")");
-            if (!hasPosition)
-                problems.add("snapshot missing: position game_packet (id=" + PACKET_ID_POSITION + ")");
-            if (!hasChunk)
-                problems.add("snapshot missing: level-chunk game_packet (id=" + PACKET_ID_LEVEL_CHUNK + ")");
-            if (!hasPlayerInfo)
-                problems.add("snapshot missing: player-info game_packet (id=" + PACKET_ID_PLAYER_INFO + ")");
+            if (!hasAnyGamePacket)
+                problems.add("snapshot missing: no game_packet actions found");
+
+            // -- Protocol-specific checks --
+            if (ids.isPresent()) {
+                PacketIds.Ids knownIds = ids.get();
+                if (!hasLogin)
+                    problems.add("snapshot missing: login game_packet (id=" + knownIds.login() + ")");
+                if (!hasPosition)
+                    problems.add("snapshot missing: position game_packet (id=" + knownIds.position() + ")");
+                if (!hasChunk)
+                    problems.add("snapshot missing: level-chunk game_packet (id=" + knownIds.chunk() + ")");
+                if (!hasPlayerInfo)
+                    problems.add("snapshot missing: player-info game_packet (id=" + knownIds.playerInfo() + ")");
+            } else {
+                // Unknown protocol — informational only, does not invalidate.
+                problems.add("renderable check limited: unknown protocol " + meta.protocolVersion
+                    + " (packet ids not in table)");
+            }
 
         } catch (Exception e) {
             // If structural validation already caught this we don't double-report the container error.
@@ -157,7 +179,12 @@ public final class FlashbackValidator {
             }
         }
 
-        return new Report(problems.isEmpty(), List.copyOf(problems), structural.totalTicks(), structural.chunkCount());
+        // The "unknown protocol" info problem must not flip valid=false on its own.
+        // We track validity by whether any *invalidating* problems were added.
+        // Strategy: rebuild valid from whether problems contain only info-level entries,
+        // i.e. problems that start with "renderable check limited:".
+        boolean valid = problems.stream().noneMatch(p -> !p.startsWith("renderable check limited:"));
+        return new Report(valid, List.copyOf(problems), structural.totalTicks(), structural.chunkCount());
     }
 
     /**

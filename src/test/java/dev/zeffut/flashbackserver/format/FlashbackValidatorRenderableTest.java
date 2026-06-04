@@ -43,14 +43,16 @@ class FlashbackValidatorRenderableTest {
     }
 
     /**
-     * Writes a .flashback file with the given snapshot actions.
+     * Writes a .flashback file with the given snapshot actions and protocol version.
      * The stream section has 1 next_tick so structural validation passes (totalTicks == declared).
      */
-    private Path writeFixture(Path dir, String name, List<ReplayAction> snapshotActions) throws Exception {
+    private Path writeFixture(Path dir, String name, int protocolVersion,
+                              List<ReplayAction> snapshotActions) throws Exception {
         Path file = dir.resolve(name + ".flashback");
         var meta = new FlashbackMeta();
         meta.name = name;
         meta.totalTicks = 1;
+        meta.protocolVersion = protocolVersion;
         meta.chunks.put("c0.flashback", new ChunkMeta(1));
 
         byte[] chunk = ChunkWriter.write(
@@ -62,6 +64,14 @@ class FlashbackValidatorRenderableTest {
             w.writeChunk("c0.flashback", chunk);
         }
         return file;
+    }
+
+    /**
+     * Convenience overload that defaults to protocol 770 (MC 1.21.5) so that
+     * id-specific checks run for all existing fixtures.
+     */
+    private Path writeFixture(Path dir, String name, List<ReplayAction> snapshotActions) throws Exception {
+        return writeFixture(dir, name, 770, snapshotActions);
     }
 
     // -----------------------------------------------------------------------
@@ -191,6 +201,7 @@ class FlashbackValidatorRenderableTest {
         var meta = new FlashbackMeta();
         meta.name = "mismatch";
         meta.totalTicks = 5; // wrong
+        meta.protocolVersion = 770;
         meta.chunks.put("c0.flashback", new ChunkMeta(5));
 
         List<ReplayAction> snapshot = List.of(
@@ -213,6 +224,32 @@ class FlashbackValidatorRenderableTest {
         assertTrue(
             report.problems().stream().anyMatch(p -> p.contains("tick")),
             "expected tick-mismatch problem, got: " + report.problems()
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Unknown protocol → graceful degradation (agnostic floor only)
+    // -----------------------------------------------------------------------
+
+    @Test
+    void unknownProtocolDegradesGracefully(@TempDir Path dir) throws Exception {
+        // Protocol 999 is not in PacketIds.TABLE — id-specific checks must be skipped.
+        // The agnostic floor (config + create_local_player + ≥1 game_packet) is satisfied.
+        // Any packet id works for the game_packet; use id=0x01 as a placeholder.
+        List<ReplayAction> snapshot = List.of(
+            new ReplayAction(CONFIG_PACKET, new byte[]{0x07, 0x01}),
+            new ReplayAction(CREATE_LOCAL_PLAYER, new byte[32]),
+            new ReplayAction(GAME_PACKET, new byte[]{0x01, 0x02, 0x03}) // arbitrary packet id
+        );
+        Path file = writeFixture(dir, "unknown-protocol", 999, snapshot);
+
+        FlashbackValidator.Report report = FlashbackValidator.validateRenderable(file);
+        assertTrue(report.valid(),
+            "replay from unknown protocol should be valid when agnostic floor is met, got: "
+                + report.problems());
+        assertTrue(
+            report.problems().stream().anyMatch(p -> p.contains("unknown protocol")),
+            "expected an informational 'unknown protocol' problem, got: " + report.problems()
         );
     }
 }
