@@ -24,13 +24,18 @@ public final class VersionAdapters {
 
     /** Minecraft version → adapter FQN (each shaded in from its {@code :nms:vX} module). */
     private static final Map<String, String> ADAPTERS_BY_VERSION = Map.of(
-        "1.21.5", "dev.zeffut.flashbackserver.version.v1_21_5.V1_21_5Adapter",
-        "1.21.8", "dev.zeffut.flashbackserver.version.v1_21_8.V1_21_8Adapter"
+        "1.21.5",  "dev.zeffut.flashbackserver.version.v1_21_5.V1_21_5Adapter",
+        "1.21.6",  "dev.zeffut.flashbackserver.version.v1_21_6.V1_21_6Adapter",
+        "1.21.7",  "dev.zeffut.flashbackserver.version.v1_21_7.V1_21_7Adapter",
+        "1.21.8",  "dev.zeffut.flashbackserver.version.v1_21_8.V1_21_8Adapter",
+        "1.21.9",  "dev.zeffut.flashbackserver.version.v1_21_9.V1_21_9Adapter",
+        "1.21.10", "dev.zeffut.flashbackserver.version.v1_21_10.V1_21_10Adapter",
+        "1.21.11", "dev.zeffut.flashbackserver.version.v1_21_11.V1_21_11Adapter"
     );
 
     /** Adapter used when the running version isn't in the table (newest known). */
     private static final String FALLBACK_FQN =
-        "dev.zeffut.flashbackserver.version.v1_21_8.V1_21_8Adapter";
+        "dev.zeffut.flashbackserver.version.v1_21_11.V1_21_11Adapter";
 
     /** Returns the {@link VersionAdapter} for the running Minecraft version. */
     public static VersionAdapter current() {
