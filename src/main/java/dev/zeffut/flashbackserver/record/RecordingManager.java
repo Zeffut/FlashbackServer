@@ -8,6 +8,7 @@ import dev.zeffut.flashbackserver.snapshot.SnapshotBuilder;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.Plugin;
 import java.nio.file.Path;
@@ -74,6 +75,12 @@ public final class RecordingManager implements Listener {
     }
 
     public boolean isRecording(Player player) { return active.containsKey(player.getUniqueId()); }
+
+    @EventHandler
+    public void onWorldChange(PlayerChangedWorldEvent event) {
+        Active a = active.get(event.getPlayer().getUniqueId());
+        if (a != null) a.recorder().rollChunk();
+    }
 
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
