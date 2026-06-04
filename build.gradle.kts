@@ -37,6 +37,13 @@ val integrationTest by tasks.registering(Test::class) {
     shouldRunAfter(tasks.test)
 }
 
+tasks.processResources {
+    // Single source of truth for the version: expand ${version} in plugin.yml from gradle.properties.
+    val props = mapOf("version" to project.version.toString())
+    inputs.properties(props)
+    filesMatching("plugin.yml") { expand(props) }
+}
+
 tasks.runServer {
     minecraftVersion("1.21.5")
 }
