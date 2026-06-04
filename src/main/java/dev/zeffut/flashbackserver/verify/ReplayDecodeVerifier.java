@@ -35,11 +35,7 @@ public final class ReplayDecodeVerifier {
 
     private ReplayDecodeVerifier() {}
 
-    public record Result(int decoded, int errors, List<String> problems) {
-        public boolean ok() {
-            return errors == 0 && decoded > 0;
-        }
-    }
+    public record Result(int decoded, int errors, List<String> problems) {}
 
     /**
      * Opens {@code file}, iterates every chunk, and decodes each {@code game_packet} action through

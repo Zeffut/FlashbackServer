@@ -47,8 +47,8 @@ public final class RecordingManager implements Listener {
             try {
                 recorder.setSnapshot(SnapshotBuilder.build(player));
             } catch (Exception e) {
-                plugin.getLogger().warning("SnapshotBuilder failed for " + player.getName()
-                        + " — recording will have empty snapshot: " + e.getMessage());
+                plugin.getLogger().severe("Snapshot build failed for " + player.getName()
+                        + " — this recording will NOT be renderable: " + e.getMessage());
             }
         }, null);
 
