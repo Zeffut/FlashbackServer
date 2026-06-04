@@ -26,14 +26,23 @@ class CrossVersionRecordingIT {
 
     @Test
     void selectsThe1_21_8AdapterOnA1_21_8Server(@TempDir Path dir) throws Exception {
-        int port = 25617;
-        try (PaperTestServer server = PaperTestServer.start(dir, port, "paper", "1.21.8")) {
-            // The plugin enabled on the 1.21.8 server...
-            assertTrue(server.awaitLogLine("FlashbackServer enabled.", 60),
-                "plugin did not enable on the 1.21.8 server");
-            // ...and selected + instantiated the 1.21.8 adapter (touches the reobf'd 1.21.8 NMS).
-            assertTrue(server.awaitLogLine("Version adapter: V1_21_8Adapter", 10),
-                "the v1_21_8 adapter was not selected/instantiated on the 1.21.8 server");
+        assertAdapterSelected(dir, 25617, "1.21.8", "V1_21_8Adapter");
+    }
+
+    @Test
+    void selectsThe1_21_11AdapterOnA1_21_11Server(@TempDir Path dir) throws Exception {
+        assertAdapterSelected(dir, 25618, "1.21.11", "V1_21_11Adapter");
+    }
+
+    private static void assertAdapterSelected(Path dir, int port, String version, String adapterClass)
+            throws Exception {
+        try (PaperTestServer server = PaperTestServer.start(dir, port, "paper", version)) {
+            // The bundled jar loads + the plugin enables on this version...
+            assertTrue(server.awaitLogLine("FlashbackServer enabled.", 90),
+                "plugin did not enable on the " + version + " server");
+            // ...and the matching version adapter (its reobf'd NMS) is selected + instantiated.
+            assertTrue(server.awaitLogLine("Version adapter: " + adapterClass, 10),
+                "the " + adapterClass + " was not selected/instantiated on the " + version + " server");
         }
     }
 }
