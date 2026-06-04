@@ -133,8 +133,8 @@ the reader reads it back in the same order (verified both sides match):
 | 2 | x | `writeDouble` | 8 |
 | 3 | y | `writeDouble` | 8 |
 | 4 | z | `writeDouble` | 8 |
-| 5 | xRot (yaw in writer var `xRot`) | `writeFloat` | 4 |
-| 6 | yRot (pitch in writer var `yRot`) | `writeFloat` | 4 |
+| 5 | xRot (pitch; `ServerPlayer.getXRot()`) | `writeFloat` | 4 |
+| 6 | yRot (yaw; `ServerPlayer.getYRot()`) | `writeFloat` | 4 |
 | 7 | yHeadRot | `writeFloat` | 4 |
 | 8 | velocity x | `writeDouble` | 8 |
 | 9 | velocity y | `writeDouble` | 8 |
