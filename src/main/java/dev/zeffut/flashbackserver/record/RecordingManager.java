@@ -3,6 +3,7 @@ package dev.zeffut.flashbackserver.record;
 import dev.zeffut.flashbackserver.capture.PacketCapture;
 import dev.zeffut.flashbackserver.capture.PacketSink;
 import dev.zeffut.flashbackserver.platform.PlatformScheduler;
+import dev.zeffut.flashbackserver.snapshot.McVersions;
 import dev.zeffut.flashbackserver.snapshot.SnapshotBuilder;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -29,7 +30,8 @@ public final class RecordingManager implements Listener {
         UUID id = player.getUniqueId();
         if (active.containsKey(id)) return false;
         Path out = outputDir.resolve(player.getName() + "-" + id + ".flashback");
-        FlashbackRecorder recorder = new FlashbackRecorder(out, player.getName(), 769, 4189);
+        FlashbackRecorder recorder = new FlashbackRecorder(out, player.getName(),
+            McVersions.protocolVersion(), McVersions.dataVersion());
         TickClock clock = new TickClock(plugin, player);
         PacketSink sink = (p, packet) -> {
             if (packet.rawBytes() != null) recorder.onPacket(packet.rawBytes());
