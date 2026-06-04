@@ -1,17 +1,20 @@
 package dev.zeffut.flashbackserver.record;
 
+import dev.zeffut.flashbackserver.platform.PlatformScheduler;
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
-import org.bukkit.scheduler.BukkitTask;
 
+/** Fires a callback once per server tick tied to a player's region (Folia-safe). */
 public final class TickClock {
     private final Plugin plugin;
-    private BukkitTask task;
+    private final Player player;
+    private Runnable cancel;
 
-    public TickClock(Plugin plugin) { this.plugin = plugin; }
+    public TickClock(Plugin plugin, Player player) { this.plugin = plugin; this.player = player; }
 
     public void start(Runnable onTick) {
-        task = plugin.getServer().getScheduler().runTaskTimer(plugin, onTick, 1L, 1L);
+        cancel = PlatformScheduler.repeatForEntity(plugin, player, 1L, onTick);
     }
 
-    public void stop() { if (task != null) { task.cancel(); task = null; } }
+    public void stop() { if (cancel != null) { cancel.run(); cancel = null; } }
 }

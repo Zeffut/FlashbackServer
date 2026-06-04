@@ -16,19 +16,22 @@ public final class ReplayCommand implements CommandExecutor {
         }
         Player target = sender.getServer().getPlayerExact(args[2]);
         if (target == null) { sender.sendMessage("Unknown player: " + args[2]); return true; }
-        try {
-            if (args[0].equalsIgnoreCase("start")) {
+        if (args[0].equalsIgnoreCase("start")) {
+            try {
                 sender.sendMessage(manager.start(target) ? "Recording " + target.getName()
                     : target.getName() + " is already being recorded");
-            } else if (args[0].equalsIgnoreCase("stop")) {
-                var path = manager.stop(target);
-                sender.sendMessage(path != null ? "Saved replay: " + path
-                    : target.getName() + " was not being recorded");
-            } else {
-                sender.sendMessage("Usage: /replay <start|stop> players <player>");
+            } catch (Exception e) {
+                sender.sendMessage("Replay error: " + e.getMessage());
             }
-        } catch (Exception e) {
-            sender.sendMessage("Replay error: " + e.getMessage());
+        } else if (args[0].equalsIgnoreCase("stop")) {
+            if (!manager.isRecording(target)) {
+                sender.sendMessage(target.getName() + " was not being recorded");
+            } else {
+                sender.sendMessage("Stopping recording for " + target.getName() + " (writing replay…)");
+                manager.stop(target); // async; logs "Saved replay: <path>" when the file is on disk
+            }
+        } else {
+            sender.sendMessage("Usage: /replay <start|stop> players <player>");
         }
         return true;
     }
