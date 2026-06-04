@@ -7,6 +7,7 @@ import dev.zeffut.flashbackserver.platform.PlatformScheduler;
 import dev.zeffut.flashbackserver.record.ReplayFiles;
 import dev.zeffut.flashbackserver.record.TickClock;
 import dev.zeffut.flashbackserver.snapshot.McVersions;
+import dev.zeffut.flashbackserver.snapshot.SnapshotBuilder;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -14,11 +15,14 @@ import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.Plugin;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 public final class ClipManager implements Listener {
     private final Plugin plugin;
@@ -27,7 +31,12 @@ public final class ClipManager implements Listener {
     private final ConcurrentHashMap<UUID, Armed> armed = new ConcurrentHashMap<>();
     private final AtomicInteger clipCounter = new AtomicInteger();
 
-    private record Armed(ClipBuffer buffer, TickClock clock, PacketSink sink) {}
+    private record Armed(
+            ClipBuffer buffer,
+            TickClock clock,
+            PacketSink sink,
+            AtomicReference<List<ReplayAction>> cachedConfig,
+            AtomicBoolean keyframeBuilding) {}
 
     public ClipManager(Plugin plugin, Path outputDir, int windowSeconds) {
         this.plugin = plugin;
@@ -40,13 +49,45 @@ public final class ClipManager implements Listener {
         UUID id = player.getUniqueId();
         ClipBuffer buffer = new ClipBuffer(windowSeconds);
         TickClock clock = new TickClock(plugin, player);
+        AtomicReference<List<ReplayAction>> cachedConfig = new AtomicReference<>(null);
+        AtomicBoolean keyframeBuilding = new AtomicBoolean(false);
+
         PacketSink sink = (p, packet) -> {
             if (packet.rawBytes() != null) buffer.onPacket(packet.rawBytes());
         };
-        Armed entry = new Armed(buffer, clock, sink);
+
+        // Tick callback: advance buffer clock; when a new keyframe is due, build it on the
+        // player's region thread (guards concurrent builds with keyframeBuilding).
+        Runnable tickCallback = () -> {
+            buffer.onTick();
+            if (buffer.needsKeyframe() && keyframeBuilding.compareAndSet(false, true)) {
+                player.getScheduler().run(plugin, t -> {
+                    try {
+                        buffer.setKeyframe(SnapshotBuilder.dynamicActions(player));
+                    } finally {
+                        keyframeBuilding.set(false);
+                    }
+                }, null);
+            }
+        };
+
+        Armed entry = new Armed(buffer, clock, sink, cachedConfig, keyframeBuilding);
         if (armed.putIfAbsent(id, entry) != null) return false; // already armed
+
         PacketCapture.injectRaw(player, sink);
-        clock.start(buffer::onTick);
+        clock.start(tickCallback);
+
+        // Seed config + first keyframe on the player's region thread.
+        player.getScheduler().run(plugin, t -> {
+            try {
+                cachedConfig.set(SnapshotBuilder.configActions(player));
+                buffer.setKeyframe(SnapshotBuilder.dynamicActions(player));
+            } catch (Exception e) {
+                plugin.getLogger().warning("SnapshotBuilder failed for " + player.getName()
+                        + " — clip will have empty snapshot: " + e.getMessage());
+            }
+        }, null);
+
         return true;
     }
 
@@ -66,14 +107,25 @@ public final class ClipManager implements Listener {
         Armed a = armed.get(player.getUniqueId());
         CompletableFuture<Path> future = new CompletableFuture<>();
         if (a == null) { future.complete(null); return future; }
-        List<ReplayAction> actions = a.buffer().clipStreamActions();
+
+        List<ReplayAction> config = a.cachedConfig().get();
+        if (config == null) {
+            // Region task hasn't run yet — clip would be non-renderable; skip gracefully.
+            plugin.getLogger().warning("Clip not ready yet for " + player.getName());
+            future.complete(null);
+            return future;
+        }
+
+        List<ReplayAction> snapshot = new ArrayList<>(config);
+        snapshot.addAll(a.buffer().clipSnapshotActions());
+        List<ReplayAction> stream = a.buffer().clipStreamActions();
         int ticks = a.buffer().clipTickCount();
         String name = player.getName();
         Path out = outputDir.resolve(name + "-clip-" + clipCounter.incrementAndGet() + ".flashback");
         PlatformScheduler.async(plugin, () -> {
             try {
                 ReplayFiles.write(out, name, McVersions.protocolVersion(), McVersions.dataVersion(),
-                    List.of(), actions, ticks);
+                    snapshot, stream, ticks);
                 plugin.getLogger().info("Saved clip: " + out);
                 future.complete(out);
             } catch (Exception e) {
