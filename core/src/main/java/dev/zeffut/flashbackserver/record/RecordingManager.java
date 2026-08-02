@@ -25,7 +25,8 @@ public final class RecordingManager implements Listener {
     private final Path outputDir;
     private final Telemetry telemetry;
     private final ConcurrentHashMap<UUID, Active> active = new ConcurrentHashMap<>();
-    private record Active(FlashbackRecorder recorder, TickClock clock, Path output, PacketSink sink) {}
+    private record Active(FlashbackRecorder recorder, TickClock clock, Path output, PacketSink sink,
+                          EntityPositionTracker positions) {}
 
     public RecordingManager(Plugin plugin, Path outputDir, Telemetry telemetry) {
         this.plugin = plugin;
@@ -41,12 +42,35 @@ public final class RecordingManager implements Listener {
         FlashbackRecorder recorder = new FlashbackRecorder(out, player.getName(),
             adapter.protocolVersion(), adapter.dataVersion());
         TickClock clock = new TickClock(plugin, player);
+
+        // PacketCapture has already dropped what the client refuses and flattened bundles, so
+        // everything that reaches here is recordable as-is.
         PacketSink sink = (p, packet) -> {
-            if (packet.rawBytes() != null) recorder.onPacket(packet.rawBytes());
+            byte[] raw = packet.rawBytes();
+            if (raw == null || raw.length == 0) return;
+            recorder.onPacket(raw);
         };
-        if (active.putIfAbsent(id, new Active(recorder, clock, out, sink)) != null) return false;
+        // Movement is not in the packet stream. ClientboundMoveEntityPacket is one of the types the
+        // client refuses, so the only movement Flashback reads is the move_entities action we
+        // synthesise here, once per tick, from the positions the server already knows -- including
+        // the player's own, which is what moves the replay camera.
+        EntityPositionTracker positions = new EntityPositionTracker();
+
+        if (active.putIfAbsent(id, new Active(recorder, clock, out, sink, positions)) != null) return false;
         PacketCapture.injectRaw(player, sink);
-        clock.start(recorder::onTick);
+
+        clock.start(() -> {
+            try {
+                byte[] moved = positions.payload(adapter.dimensionKey(player),
+                        adapter.visibleEntityPositions(player));
+                if (moved != null) recorder.onMoveEntities(moved);
+            } catch (Exception e) {
+                // A tick without movement is a worse recording; a tick that throws stops the clock.
+                plugin.getLogger().warning("move_entities failed for " + player.getName() + ": "
+                        + e.getClass().getSimpleName() + ": " + e.getMessage());
+            }
+            recorder.onTick();
+        });
 
         // Build the initial-state snapshot on the player's region thread (Folia) / main thread (Paper).
         // The capture can run immediately; the snapshot just needs to be set before stop() writes.
@@ -90,7 +114,12 @@ public final class RecordingManager implements Listener {
     @EventHandler
     public void onWorldChange(PlayerChangedWorldEvent event) {
         Active a = active.get(event.getPlayer().getUniqueId());
-        if (a != null) a.recorder().rollChunk();
+        if (a == null) return;
+        a.recorder().rollChunk();
+        // Positions carried over from the old dimension would be diffed against entities in the
+        // new one. Ids do not survive a dimension change, but the player's does -- so without this
+        // the camera's first frame in the new world can be suppressed as "unchanged".
+        a.positions().reset();
     }
 
     @EventHandler

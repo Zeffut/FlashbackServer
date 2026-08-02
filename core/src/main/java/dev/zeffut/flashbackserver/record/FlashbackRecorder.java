@@ -9,8 +9,9 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public final class FlashbackRecorder {
 
-    public static final String GAME_PACKET_ACTION = "flashback:action/game_packet";
-    public static final String NEXT_TICK_ACTION   = "flashback:action/next_tick";
+    public static final String GAME_PACKET_ACTION   = "flashback:action/game_packet";
+    public static final String NEXT_TICK_ACTION     = "flashback:action/next_tick";
+    public static final String MOVE_ENTITIES_ACTION = EntityPositionTracker.MOVE_ENTITIES_ACTION;
 
     private final Path output;
     private final String playerName;
@@ -70,6 +71,26 @@ public final class FlashbackRecorder {
         try {
             if (stopped) return;
             currentChunk.add(new ReplayAction(GAME_PACKET_ACTION, idAndPayload));
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Records the absolute positions of everything that moved this tick.
+     *
+     * <p>Must be written immediately before the {@link #onTick()} that closes the same tick — the
+     * client applies actions in stream order and advances the world on {@code next_tick}, so a
+     * {@code move_entities} written after it would land the movement one tick late. Flashback's own
+     * recorder emits the pair in this order too.
+     *
+     * <p>Must be called from the player's region thread.
+     */
+    public void onMoveEntities(byte[] payload) {
+        lock.lock();
+        try {
+            if (stopped) return;
+            currentChunk.add(new ReplayAction(MOVE_ENTITIES_ACTION, payload));
         } finally {
             lock.unlock();
         }
