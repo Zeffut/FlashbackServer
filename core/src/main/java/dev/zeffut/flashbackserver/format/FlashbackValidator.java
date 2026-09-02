@@ -160,8 +160,8 @@ public final class FlashbackValidator {
                 PacketIds.Ids knownIds = ids.get();
                 if (!hasLogin)
                     problems.add("snapshot missing: login game_packet (id=" + knownIds.login() + ")");
-                if (!hasPosition)
-                    problems.add("snapshot missing: position game_packet (id=" + knownIds.position() + ")");
+                // ClientboundPlayerPositionPacket is intentionally absent: Flashback rejects it.
+                // create_local_player carries the camera's initial position instead.
                 if (!hasChunk)
                     problems.add("snapshot missing: level-chunk game_packet (id=" + knownIds.chunk() + ")");
                 if (!hasPlayerInfo)
