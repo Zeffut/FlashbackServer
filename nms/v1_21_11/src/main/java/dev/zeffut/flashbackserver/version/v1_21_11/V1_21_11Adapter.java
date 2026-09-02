@@ -1,6 +1,7 @@
 package dev.zeffut.flashbackserver.version.v1_21_11;
 
 import dev.zeffut.flashbackserver.format.ReplayAction;
+import dev.zeffut.flashbackserver.version.PacketTranslator;
 import dev.zeffut.flashbackserver.version.VersionAdapter;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
@@ -12,6 +13,8 @@ import net.minecraft.network.Connection;
 import net.minecraft.network.ProtocolInfo;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.BundleDelimiterPacket;
+import net.minecraft.network.protocol.BundlePacket;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.common.ClientboundUpdateTagsPacket;
 import net.minecraft.network.protocol.configuration.ClientConfigurationPacketListener;
@@ -24,16 +27,17 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import net.minecraft.server.network.config.SynchronizeRegistriesTask;
 import net.minecraft.tags.TagNetworkSerialization;
-import net.minecraft.world.entity.PositionMoveRotation;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.flag.FeatureFlags;
 import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.phys.AABB;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
-import java.util.Set;
+import java.util.logging.Logger;
 
 /**
  * {@link VersionAdapter} implementation for Minecraft 1.21.11.
@@ -58,6 +62,7 @@ public final class V1_21_11Adapter implements VersionAdapter {
     private static final String GAME_PACKET   = "flashback:action/game_packet";
     private static final String CONFIG_PACKET = "flashback:action/configuration_packet";
     private static final int MAX_PROBLEMS = 20;
+    private static final Logger LOG = Logger.getLogger("FlashbackServer");
 
     // ─── VersionAdapter: channel ──────────────────────────────────────────────
 
@@ -193,12 +198,17 @@ public final class V1_21_11Adapter implements VersionAdapter {
         MinecraftServer server = sp.level().getServer();
         List<ReplayAction> actions = new ArrayList<>();
 
-        // Position
-        ClientboundPlayerPositionPacket positionPacket = ClientboundPlayerPositionPacket.of(
-                sp.getId(),
-                PositionMoveRotation.of(sp),
-                Set.of());
-        actions.add(new ReplayAction(GAME_PACKET, encodeGamePacket(sp, positionPacket)));
+        // NOTE: no ClientboundPlayerPositionPacket here.
+        //
+        // The Flashback client refuses that packet outright --
+        // ReplayGamePacketHandler#handleMovePlayer is `throw new
+        // UnsupportedPacketException(...)` with its body commented out -- so a snapshot
+        // containing one kills the client's integrated replay server during
+        // ReplayReader#handleSnapshot and the recording cannot be opened at all.
+        //
+        // It is also redundant: the create_local_player action emitted immediately
+        // before this (SnapshotBuilder#dynamicActions) already carries x/y/z, the
+        // rotations and velocity, and the client spawns the camera entity from them.
 
         // Player info (ADD_PLAYER + UPDATE_LISTED)
         ClientboundPlayerInfoUpdatePacket playerInfoPacket = new ClientboundPlayerInfoUpdatePacket(
@@ -332,5 +342,111 @@ public final class V1_21_11Adapter implements VersionAdapter {
         } finally {
             buf.release();
         }
+    }
+
+    // ─── VersionAdapter: live capture ─────────────────────────────────────────
+
+    /**
+     * A {@link PacketTranslator} bound to this player's registry access.
+     *
+     * <p>The PLAY codec is built once and reused for every packet on the connection — rebuilding
+     * it per packet, as {@link #encodeGamePacket} does for the handful of snapshot packets, would
+     * be ruinous on a live stream.
+     */
+    @Override
+    public PacketTranslator translatorFor(Player player) {
+        if (!(player instanceof CraftPlayer craft)) {
+            throw new IllegalArgumentException(
+                    "Expected CraftPlayer but got " + player.getClass().getName());
+        }
+        ServerPlayer sp = craft.getHandle();
+        String playerName = sp.getScoreboardName();
+        ProtocolInfo<ClientGamePacketListener> info =
+                GameProtocols.CLIENTBOUND_TEMPLATE.bind(
+                        RegistryFriendlyByteBuf.decorator(sp.registryAccess()));
+        StreamCodec<ByteBuf, Packet<? super ClientGamePacketListener>> codec = info.codec();
+
+        return new PacketTranslator() {
+            @Override
+            public List<Object> expand(Object message) {
+                // A bundle's sub-packets are what Flashback records; the bundle itself and the
+                // delimiters the pipeline wraps them in are framing the replay client asserts on
+                // ("This packet should be handled by pipeline").
+                if (message instanceof BundlePacket<?> bundle) {
+                    List<Object> out = new ArrayList<>();
+                    for (Packet<?> sub : bundle.subPackets()) out.add(sub);
+                    return out;
+                }
+                if (message instanceof BundleDelimiterPacket<?>) return List.of();
+                if (message instanceof Packet<?>) return List.of(message);
+                return List.of(); // ByteBufs and anything else the pipeline carries
+            }
+
+            @Override
+            @SuppressWarnings("unchecked")
+            public byte[] encode(Object packet) {
+                ByteBuf buf = Unpooled.buffer();
+                try {
+                    codec.encode(buf, (Packet<? super ClientGamePacketListener>) packet);
+                    return ByteBufUtil.getBytes(buf);
+                } catch (Exception e) {
+                    // Not fatal: one packet the codec will not take should cost that packet, not
+                    // the recording. Anything reaching here is a real bug, so say so loudly once.
+                    LOG.warning("Could not encode " + packet.getClass().getSimpleName()
+                            + " for " + playerName + ": " + e.getClass().getSimpleName()
+                            + ": " + e.getMessage());
+                    return null;
+                } finally {
+                    buf.release();
+                }
+            }
+        };
+    }
+
+    @Override
+    public String dimensionKey(Player player) {
+        ServerPlayer sp = ((CraftPlayer) player).getHandle();
+        // 1.21.11 renamed ResourceLocation to Identifier and ResourceKey#location() to
+        // #identifier(); every earlier adapter in this project still calls location().
+        return ((ServerLevel) sp.level()).dimension().identifier().toString();
+    }
+
+    /**
+     * Every entity within the server's view distance of the player, plus the player itself.
+     *
+     * <p>This is the server-side stand-in for the client-side set Flashback's own recorder walks
+     * ({@code level.entitiesForRendering()}). It cannot be narrowed to "entities the client is
+     * tracking" without reaching into {@code ChunkMap}'s tracker state; a view-distance box over
+     * the level's entity index gives the same answer for anything that matters and costs one
+     * spatial query per tick.
+     */
+    @Override
+    public List<VersionAdapter.EntityPosition> visibleEntityPositions(Player player) {
+        if (!(player instanceof CraftPlayer craft)) {
+            throw new IllegalArgumentException(
+                    "Expected CraftPlayer but got " + player.getClass().getName());
+        }
+        ServerPlayer sp = craft.getHandle();
+        ServerLevel level = (ServerLevel) sp.level();
+        MinecraftServer server = sp.level().getServer();
+
+        double range = Math.min(server.getPlayerList().getViewDistance(), SNAPSHOT_CHUNK_RADIUS) * 16.0;
+        AABB box = sp.getBoundingBox().inflate(range);
+
+        List<VersionAdapter.EntityPosition> out = new ArrayList<>();
+        out.add(positionOf(sp)); // the camera — getEntities(sp, …) excludes it
+        for (Entity entity : level.getEntities(sp, box)) {
+            out.add(positionOf(entity));
+        }
+        return out;
+    }
+
+    private static VersionAdapter.EntityPosition positionOf(Entity entity) {
+        return new VersionAdapter.EntityPosition(
+                entity.getId(),
+                entity.getX(), entity.getY(), entity.getZ(),
+                entity.getYRot(), entity.getXRot(),
+                entity.getYHeadRot(),   // == getYRot() for non-living entities
+                entity.onGround());
     }
 }
