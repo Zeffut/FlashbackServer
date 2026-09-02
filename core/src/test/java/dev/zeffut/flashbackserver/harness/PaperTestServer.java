@@ -64,8 +64,12 @@ public final class PaperTestServer implements AutoCloseable {
 
         Path serverJar = PaperDownloader.resolve(baseDir.resolve("test-server"), project, version);
 
+        String configuredJavaHome = System.getenv("JAVA_HOME");
+        Path serverJava = configuredJavaHome == null || configuredJavaHome.isBlank()
+                ? Path.of(System.getProperty("java.home"), "bin", "java")
+                : Path.of(configuredJavaHome, "bin", "java");
         ProcessBuilder pb = new ProcessBuilder(
-            "java", "-Xmx1G", "-jar", serverJar.toAbsolutePath().toString(), "nogui")
+            serverJava.toString(), "-Xmx1G", "-jar", serverJar.toAbsolutePath().toString(), "nogui")
             .directory(runDir.toFile())
             .redirectErrorStream(true);
         Process process = pb.start();
