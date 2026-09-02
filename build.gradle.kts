@@ -1,7 +1,7 @@
 plugins {
     java
     // Declared here so subprojects can apply them; not applied to the root itself.
-    id("io.papermc.paperweight.userdev") version "2.0.0-beta.18" apply false
+    id("io.papermc.paperweight.userdev") version "2.0.0-beta.22" apply false
     id("xyz.jpenilla.run-paper") version "3.0.2"
     // Shadow assembles the single bundled plugin jar.
     id("com.gradleup.shadow") version "8.3.6"
@@ -40,6 +40,12 @@ tasks.shadowJar {
         from(zipTree(reobfJar.map { it.outputs.files.singleFile })) {
             include("dev/zeffut/flashbackserver/version/v1_21_$v/**")
         }
+    }
+    // Paper 26.1+ runs Mojang-mapped plugins, so its adapter must not be reobfuscated.
+    val v26_2Jar = project(":nms:v26_2").tasks.named<Jar>("jar")
+    dependsOn(v26_2Jar)
+    from(zipTree(v26_2Jar.map { it.outputs.files.singleFile })) {
+        include("dev/zeffut/flashbackserver/version/v26_2/**")
     }
 }
 

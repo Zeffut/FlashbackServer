@@ -30,7 +30,8 @@ public final class VersionAdapters {
         "1.21.8",  "dev.zeffut.flashbackserver.version.v1_21_8.V1_21_8Adapter",
         "1.21.9",  "dev.zeffut.flashbackserver.version.v1_21_9.V1_21_9Adapter",
         "1.21.10", "dev.zeffut.flashbackserver.version.v1_21_10.V1_21_10Adapter",
-        "1.21.11", "dev.zeffut.flashbackserver.version.v1_21_11.V1_21_11Adapter"
+        "1.21.11", "dev.zeffut.flashbackserver.version.v1_21_11.V1_21_11Adapter",
+        "26.2",    "dev.zeffut.flashbackserver.version.v26_2.V26_2Adapter"
     );
 
     /** Adapter used when the running version isn't in the table (newest known). */
