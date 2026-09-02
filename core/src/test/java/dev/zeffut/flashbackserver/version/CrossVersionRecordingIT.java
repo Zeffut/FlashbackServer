@@ -25,18 +25,43 @@ import static org.junit.jupiter.api.Assertions.*;
 class CrossVersionRecordingIT {
 
     @Test
+    void selectsThe1_21_5AdapterOnA1_21_5Server(@TempDir Path dir) throws Exception {
+        assertAdapterSelected(dir, 25615, "1.21.5", "V1_21_5Adapter");
+    }
+
+    @Test
+    void selectsThe1_21_6AdapterOnA1_21_6Server(@TempDir Path dir) throws Exception {
+        assertAdapterSelected(dir, 25616, "1.21.6", "V1_21_6Adapter");
+    }
+
+    @Test
+    void selectsThe1_21_7AdapterOnA1_21_7Server(@TempDir Path dir) throws Exception {
+        assertAdapterSelected(dir, 25617, "1.21.7", "V1_21_7Adapter");
+    }
+
+    @Test
     void selectsThe1_21_8AdapterOnA1_21_8Server(@TempDir Path dir) throws Exception {
-        assertAdapterSelected(dir, 25617, "1.21.8", "V1_21_8Adapter");
+        assertAdapterSelected(dir, 25618, "1.21.8", "V1_21_8Adapter");
+    }
+
+    @Test
+    void selectsThe1_21_9AdapterOnA1_21_9Server(@TempDir Path dir) throws Exception {
+        assertAdapterSelected(dir, 25619, "1.21.9", "V1_21_9Adapter");
+    }
+
+    @Test
+    void selectsThe1_21_10AdapterOnA1_21_10Server(@TempDir Path dir) throws Exception {
+        assertAdapterSelected(dir, 25620, "1.21.10", "V1_21_10Adapter");
     }
 
     @Test
     void selectsThe1_21_11AdapterOnA1_21_11Server(@TempDir Path dir) throws Exception {
-        assertAdapterSelected(dir, 25618, "1.21.11", "V1_21_11Adapter");
+        assertAdapterSelected(dir, 25621, "1.21.11", "V1_21_11Adapter");
     }
 
     @Test
     void selectsThe26_2AdapterOnA26_2Server(@TempDir Path dir) throws Exception {
-        assertAdapterSelected(dir, 25619, "26.2", "V26_2Adapter");
+        assertAdapterSelected(dir, 25622, "26.2", "V26_2Adapter");
     }
 
     private static void assertAdapterSelected(Path dir, int port, String version, String adapterClass)
