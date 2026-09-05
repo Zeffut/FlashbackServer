@@ -8,6 +8,8 @@
 
 ## Running tests
 - Fast unit tests (no network, no server): `./gradlew test`
-- Integration tests (boots a real Paper server + headless bot): `./gradlew integrationTest`
-  - Downloads a Paper 1.21.5 jar once into `build/test-server/`.
-  - Requires network access and a free local port.
+- Integration tests (boots real Paper servers + a headless bot): `./gradlew integrationTest`
+  - Downloads Paper 1.21.5 and Paper 26.2 jars once into temporary test directories.
+  - Requires JDK 21 and JDK 25, network access, and free local ports.
+  - Set `JAVA21_HOME` and `JAVA25_HOME` to portable JDK installations when they are not
+    auto-detected (the CI workflow demonstrates this).

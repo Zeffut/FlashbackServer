@@ -69,6 +69,28 @@ val integrationTest by tasks.registering(Test::class) {
     shouldRunAfter(project(":core").tasks.named("test"))
 }
 
+// Focused real-server smoke for the Java-25 Paper 26.2 adapter. This avoids
+// conflating it with the Java-21 regression suite while running the exact
+// deployed shadow jar, booting the server, asserting plugin enablement, and
+// performing its controlled shutdown.
+val paper26_2Smoke by tasks.registering(Test::class) {
+    val coreTest = project(":core").extensions
+        .getByType<SourceSetContainer>()["test"]
+    useJUnitPlatform { includeTags("integration") }
+    filter { includeTestsMatching("dev.zeffut.flashbackserver.harness.Paper26_2SmokeIT") }
+    testClassesDirs = coreTest.output.classesDirs
+    classpath = coreTest.runtimeClasspath
+    javaLauncher.set(javaToolchains.launcherFor {
+        languageVersion.set(JavaLanguageVersion.of(25))
+    })
+    dependsOn(tasks.shadowJar)
+    systemProperty(
+        "flashback.plugin.jar",
+        tasks.shadowJar.get().archiveFile.get().asFile.absolutePath
+    )
+    shouldRunAfter(project(":core").tasks.named("test"))
+}
+
 tasks.runServer {
     minecraftVersion("1.21.5")
     // Run the bundled jar so manual testing matches the deployed artifact.
