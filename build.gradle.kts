@@ -61,6 +61,10 @@ val integrationTest by tasks.registering(Test::class) {
     useJUnitPlatform { includeTags("integration") }
     testClassesDirs = coreTest.output.classesDirs
     classpath = coreTest.runtimeClasspath
+    // Paper 26.2 and the bundled v26_2 adapter require Java 25 at runtime.
+    javaLauncher.set(javaToolchains.launcherFor {
+        languageVersion.set(JavaLanguageVersion.of(25))
+    })
     dependsOn(tasks.shadowJar)
     systemProperty(
         "flashback.plugin.jar",
