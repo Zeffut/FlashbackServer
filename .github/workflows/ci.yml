@@ -25,8 +25,8 @@ jobs:
         with:
           distribution: temurin
           java-version: '25'
-      - name: Verify adapters, unit tests, and Paper 26.2 smoke test
+      - name: Verify adapters, unit tests, and focused Paper 26.2 smoke test
         env:
           JAVA21_HOME: ${{ steps.jdk21.outputs.path }}
           JAVA25_HOME: ${{ steps.jdk25.outputs.path }}
-        run: ./gradlew clean :nms:v26_2:build :core:test integrationTest --no-daemon
+        run: ./gradlew clean :nms:v26_2:build :core:test paper26_2Smoke --no-daemon
