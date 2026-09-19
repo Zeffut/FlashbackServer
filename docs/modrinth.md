@@ -38,6 +38,7 @@ Flashback client mod.
 - **Renderable snapshots** — recordings include a synthesized initial state (registries, chunks, player) so
   the Flashback client renders them from the start.
 - **Multi-chunk** recordings for long sessions + dimension changes.
+- **Plugin API** — other plugins can start recordings and save clips via `FlashbackAPI` / Bukkit services.
 
 ## Commands (`flashbackserver.replay`, default op)
 | Command | Description |

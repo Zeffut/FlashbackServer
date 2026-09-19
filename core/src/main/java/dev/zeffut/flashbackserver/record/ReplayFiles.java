@@ -1,12 +1,28 @@
 package dev.zeffut.flashbackserver.record;
 
 import dev.zeffut.flashbackserver.format.*;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import org.bukkit.Bukkit;
+import org.bukkit.plugin.Plugin;
 
 public final class ReplayFiles {
     private ReplayFiles() {}
+
+    /**
+     * Resolves a caller-supplied output path for the public save APIs.
+     *
+     * <p>Absolute paths are used as-is; relative paths are resolved against the plugin data
+     * folder ({@code plugin.getDataFolder()}) and normalized. Callers handle {@code null}
+     * (default location) before calling this.
+     */
+    public static Path resolveOutput(Plugin plugin, Path requested) {
+        Path p = requested.isAbsolute()
+                ? requested
+                : plugin.getDataFolder().toPath().resolve(requested);
+        return p.normalize();
+    }
 
     /**
      * The Minecraft version written into the container's metadata.
@@ -38,6 +54,10 @@ public final class ReplayFiles {
      */
     public static void write(Path output, String playerName, int protocolVersion, int dataVersion,
                              List<Chunk> chunks) throws Exception {
+        Path parent = output.getParent();
+        if (parent != null) {
+            Files.createDirectories(parent);
+        }
         FlashbackMeta meta = new FlashbackMeta();
         meta.name = playerName;
         meta.versionString = minecraftVersion();

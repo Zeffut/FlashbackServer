@@ -46,13 +46,47 @@ public final class VersionAdapters {
             Class<?> clazz = Class.forName(fqn);
             return (VersionAdapter) clazz.getDeclaredConstructor().newInstance();
         } catch (ClassNotFoundException e) {
-            throw new IllegalStateException(
+            throw new VersionAdapterUnavailableException(
                 "Version adapter class not found: " + fqn
                     + ". The :nms adapter module was not shaded into the plugin jar.", e);
+        } catch (NoClassDefFoundError e) {
+            throw new VersionAdapterUnavailableException(
+                "Version adapter class incomplete (partial classpath): " + fqn, e);
         } catch (ReflectiveOperationException e) {
+            if (isClassLoadingFailure(e)) {
+                throw new VersionAdapterUnavailableException(
+                    "Version adapter could not be loaded: " + fqn, e);
+            }
             throw new IllegalStateException(
                 "Failed to instantiate version adapter: " + fqn, e);
         }
+    }
+
+    /**
+     * {@code true} only for known adapter class-loading failures
+     * ({@link VersionAdapterUnavailableException}, {@link ClassNotFoundException},
+     * {@link NoClassDefFoundError} anywhere on the cause chain).
+     *
+     * <p>Intended for adapter <em>lookup</em>. Decode failures must fail closed and must not be
+     * classified as “unavailable”.
+     */
+    public static boolean isUnavailable(Throwable t) {
+        for (Throwable c = t; c != null; c = (c.getCause() == c ? null : c.getCause())) {
+            if (c instanceof VersionAdapterUnavailableException) return true;
+            if (c instanceof ClassNotFoundException) return true;
+            if (c instanceof NoClassDefFoundError) return true;
+        }
+        return false;
+    }
+
+    private static boolean isClassLoadingFailure(Throwable t) {
+        for (Throwable c = t; c != null; c = (c.getCause() == c ? null : c.getCause())) {
+            if (c instanceof ClassNotFoundException) return true;
+            if (c instanceof NoClassDefFoundError) return true;
+            if (c instanceof ExceptionInInitializerError) return true;
+            if (c instanceof ClassCastException) return true;
+        }
+        return false;
     }
 
     private static String resolveAdapterFqn() {

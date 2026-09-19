@@ -13,6 +13,7 @@ public final class FlashbackRecorder {
     public static final String NEXT_TICK_ACTION     = "flashback:action/next_tick";
     public static final String MOVE_ENTITIES_ACTION = EntityPositionTracker.MOVE_ENTITIES_ACTION;
 
+    /** Default write target when {@link #stop()} is called without an explicit destination. */
     private final Path output;
     private final String playerName;
     private final int protocolVersion;
@@ -135,8 +136,17 @@ public final class FlashbackRecorder {
         }
     }
 
-    /** Idempotent: second and subsequent calls are no-ops. */
+    /** Idempotent: second and subsequent calls are no-ops. Writes to the default output path. */
     public void stop() throws Exception {
+        stop(null);
+    }
+
+    /**
+     * Idempotent: second and subsequent calls are no-ops.
+     *
+     * @param destination explicit file path including name; {@code null} uses the recorder's default output
+     */
+    public void stop(Path destination) throws Exception {
         List<ReplayAction> snapshotCopy;
         List<List<ReplayAction>> allChunks;
 
@@ -169,7 +179,8 @@ public final class FlashbackRecorder {
             }
         }
 
-        ReplayFiles.write(output, playerName, protocolVersion, dataVersion, chunks);
+        Path out = destination != null ? destination : output;
+        ReplayFiles.write(out, playerName, protocolVersion, dataVersion, chunks);
     }
 
     private static int countNextTicks(List<ReplayAction> actions) {

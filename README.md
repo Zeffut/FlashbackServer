@@ -96,6 +96,102 @@ changes trigger a fresh snapshot.
 Core recording, clip, and verify features are shipped. Visual rendering should be confirmed in
 the Flashback client against your specific server version.
 
+## Plugin API
+
+Other plugins can start recordings and manage rolling clips programmatically.
+
+**Consumer setup:**
+- `plugin.yml`: `softdepend: [FlashbackServer]`
+- Compile with `compileOnly` against the FlashbackServer jar (`dev.zeffut.flashbackserver.api`)
+- **Do not shade** the API classes — a second copy of `FlashbackAPI` is never bound
+
+**Classloading note:** if FlashbackServer is **not installed**, referencing `FlashbackAPI` throws
+`NoClassDefFoundError`. Always check installation before touching API classes:
+
+```java
+import dev.zeffut.flashbackserver.api.ClipService;
+import dev.zeffut.flashbackserver.api.FlashbackAPI;
+import dev.zeffut.flashbackserver.api.RecordingService;
+import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
+
+import java.nio.file.Path;
+import java.util.concurrent.CompletableFuture;
+
+if (Bukkit.getPluginManager().getPlugin("FlashbackServer") == null) {
+    return; // not installed — do not touch FlashbackAPI
+}
+if (!FlashbackAPI.isAvailable()) {
+    return; // installed but disabled
+}
+
+// Re-fetch on each use; do not cache across plugin reloads.
+RecordingService recording = FlashbackAPI.recording();
+ClipService clips = FlashbackAPI.clips();
+
+if (recording.start(player)) {
+    // Default location
+    CompletableFuture<Path> file = recording.stop(player);
+    // Or custom path (absolute as-is; relative → plugins/FlashbackServer/…)
+    // CompletableFuture<Path> file = recording.stop(player, Path.of("rounds/final.flashback"));
+    file.thenAccept(path -> {
+        if (path == null) return;
+        ReplayCheckResult check = FlashbackAPI.verify(path); // API-side verify, any path
+        if (!check.ok()) {
+            // check.problems() / check.errorCount()
+        }
+    });
+}
+
+if (clips.arm(player)) {
+    // Wait ≥1 tick before saveClip — first keyframe is built async; earlier calls return null.
+    CompletableFuture<Path> clip = clips.saveClip(player);
+    // Or: clips.saveClip(player, Path.of("highlights/kill-01.flashback"));
+}
+```
+
+**Bukkit ServicesManager** (same classloading caveat; with `softdepend` the service is already
+registered when your `onEnable` runs — no retry needed):
+
+```java
+RecordingService recording =
+    Bukkit.getServicesManager().load(RecordingService.class);
+ClipService clips =
+    Bukkit.getServicesManager().load(ClipService.class);
+if (recording == null || clips == null) {
+    return; // FlashbackServer not enabled
+}
+```
+
+**Threading:** service methods may be called from any thread. Returned futures complete on an
+**async** thread — do not call Bukkit API in `whenComplete`/`thenAccept` without hopping back to
+the player's region thread (`player.getScheduler().run(...)`).
+
+Do not implement `RecordingService` / `ClipService` in production plugins (test doubles only) —
+methods may be added in future releases.
+
+| Service | Method | Notes |
+|---|---|---|
+| `RecordingService` | `start(Player)` | `false` if already recording |
+| `RecordingService` | `stop(Player)` | default path; `CompletableFuture<Path>`; `null` if not recording; async |
+| `RecordingService` | `stop(Player, Path)` | custom file path incl. name; `null` path → default; relative → data folder |
+| `RecordingService` | `isRecording(Player)` | |
+| `ClipService` | `arm(Player)` / `disarm(Player)` | `false` if already armed / not armed |
+| `ClipService` | `isArmed(Player)` | |
+| `ClipService` | `saveClip(Player)` | default path; `null` if not armed/not ready (wait ≥1 tick after arm); async |
+| `ClipService` | `saveClip(Player, Path)` | custom file path incl. name; same readiness rules as above |
+| `FlashbackAPI` | `verify(Path)` | format + packet-decode check on **any** `.flashback` path → `ReplayCheckResult` |
+
+**`verify` semantics:** format/container checks always run. Packet decode is **skipped only** when the version adapter is unavailable (class not shaded / partial classpath) — then `decodeClean` is `null` and format alone decides `ok()`. Any other decoder failure (corrupt stream, unexpected exception, adapter instantiate error that is not a missing class) sets `decodeClean=false` and makes `ok()` false.
+
+**Custom save paths (API):**
+- `null` → default location under `replays/` or `clips/`
+- absolute `Path` → written as-is (parent directories created)
+- relative `Path` → resolved against `plugins/FlashbackServer/` (`plugin.getDataFolder()`)
+- same path is overwritten; suffix not enforced (prefer `.flashback`)
+- custom-path files are **API outputs**: call `FlashbackAPI.verify(path)` to validate them.
+  `/replay verify` only scans the default `replays/` and `clips/` folders.
+
 ## Telemetry
 
 Flashback Server collects **anonymous, opt-out** usage telemetry to help improve the plugin.

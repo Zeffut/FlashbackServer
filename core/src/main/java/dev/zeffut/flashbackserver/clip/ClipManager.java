@@ -1,5 +1,6 @@
 package dev.zeffut.flashbackserver.clip;
 
+import dev.zeffut.flashbackserver.api.ClipService;
 import dev.zeffut.flashbackserver.capture.PacketCapture;
 import dev.zeffut.flashbackserver.capture.PacketSink;
 import dev.zeffut.flashbackserver.format.ReplayAction;
@@ -27,7 +28,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-public final class ClipManager implements Listener {
+public final class ClipManager implements Listener, ClipService {
     private final Plugin plugin;
     private final Path outputDir;
     private final int windowSeconds;
@@ -50,6 +51,7 @@ public final class ClipManager implements Listener {
     }
 
     /** Arms a rolling clip buffer for the player. Returns false if already armed. */
+    @Override
     public boolean arm(Player player) {
         UUID id = player.getUniqueId();
         ClipBuffer buffer = new ClipBuffer(windowSeconds);
@@ -97,6 +99,7 @@ public final class ClipManager implements Listener {
     }
 
     /** Disarms (stops buffering). Returns false if not armed. */
+    @Override
     public boolean disarm(Player player) {
         Armed a = armed.remove(player.getUniqueId());
         if (a == null) return false;
@@ -105,10 +108,40 @@ public final class ClipManager implements Listener {
         return true;
     }
 
+    @Override
     public boolean isArmed(Player player) { return armed.containsKey(player.getUniqueId()); }
 
+    /**
+     * Disarms every rolling buffer and ejects capture handlers. Used on plugin disable.
+     * Returns how many buffers were disarmed (clips are discarded, not saved).
+     */
+    public int disarmAll() {
+        int disarmed = 0;
+        for (UUID id : armed.keySet()) {
+            Armed a = armed.remove(id);
+            if (a == null) continue;
+            Player player = plugin.getServer().getPlayer(id);
+            if (player != null) {
+                try {
+                    PacketCapture.ejectRaw(player, a.sink());
+                } catch (RuntimeException ignored) {
+                    // player/channel may already be gone
+                }
+            }
+            a.clock().stop();
+            disarmed++;
+        }
+        return disarmed;
+    }
+
     /** Writes the player's current clip window to disk async. Future completes with the path (null if not armed). */
+    @Override
     public CompletableFuture<Path> saveClip(Player player) {
+        return saveClip(player, null);
+    }
+
+    @Override
+    public CompletableFuture<Path> saveClip(Player player, Path outputFile) {
         Armed a = armed.get(player.getUniqueId());
         CompletableFuture<Path> future = new CompletableFuture<>();
         if (a == null) { future.complete(null); return future; }
@@ -129,7 +162,9 @@ public final class ClipManager implements Listener {
         List<ReplayAction> stream = clip.stream();
         int ticks = clip.tickCount();
         String name = player.getName();
-        Path out = outputDir.resolve(name + "-clip-" + clipCounter.incrementAndGet() + ".flashback");
+        Path out = outputFile == null
+                ? outputDir.resolve(name + "-clip-" + clipCounter.incrementAndGet() + ".flashback")
+                : ReplayFiles.resolveOutput(plugin, outputFile);
         PlatformScheduler.async(plugin, () -> {
             try {
                 var adapter = VersionAdapters.current();

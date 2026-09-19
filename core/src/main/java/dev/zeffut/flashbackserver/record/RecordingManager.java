@@ -1,5 +1,6 @@
 package dev.zeffut.flashbackserver.record;
 
+import dev.zeffut.flashbackserver.api.RecordingService;
 import dev.zeffut.flashbackserver.capture.PacketCapture;
 import dev.zeffut.flashbackserver.capture.PacketSink;
 import dev.zeffut.flashbackserver.platform.PlatformScheduler;
@@ -19,7 +20,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
-public final class RecordingManager implements Listener {
+public final class RecordingManager implements Listener, RecordingService {
 
     private final Plugin plugin;
     private final Path outputDir;
@@ -34,6 +35,7 @@ public final class RecordingManager implements Listener {
         this.telemetry = telemetry;
     }
 
+    @Override
     public boolean start(Player player) {
         UUID id = player.getUniqueId();
         if (active.containsKey(id)) return false;
@@ -86,20 +88,29 @@ public final class RecordingManager implements Listener {
         return true;
     }
 
+    @Override
     public CompletableFuture<Path> stop(Player player) {
+        return stop(player, null);
+    }
+
+    @Override
+    public CompletableFuture<Path> stop(Player player, Path outputFile) {
         Active a = active.remove(player.getUniqueId());
         var future = new CompletableFuture<Path>();
         if (a == null) { future.complete(null); return future; }
         PacketCapture.ejectRaw(player, a.sink());
         a.clock().stop();
+        Path dest = outputFile == null
+                ? a.output()
+                : ReplayFiles.resolveOutput(plugin, outputFile);
         PlatformScheduler.async(plugin, () -> {
             try {
-                a.recorder().stop();                 // file write, off the server threads
-                plugin.getLogger().info("Saved replay: " + a.output());
+                a.recorder().stop(dest);       // file write, off the server threads
+                plugin.getLogger().info("Saved replay: " + dest);
                 long fileBytes = -1;
-                try { fileBytes = Files.size(a.output()); } catch (Exception ignored) {}
+                try { fileBytes = Files.size(dest); } catch (Exception ignored) {}
                 telemetry.capture("recording_saved", Map.of("file_bytes", fileBytes));
-                future.complete(a.output());
+                future.complete(dest);
             } catch (Exception e) {
                 plugin.getLogger().warning("Failed to write replay: " + e.getMessage());
                 telemetry.capture("recording_failed", Map.of("reason_class", e.getClass().getSimpleName()));
@@ -109,7 +120,38 @@ public final class RecordingManager implements Listener {
         return future;
     }
 
+    @Override
     public boolean isRecording(Player player) { return active.containsKey(player.getUniqueId()); }
+
+    /**
+     * Stops every active recording, ejects capture handlers, and flushes files synchronously.
+     * Used on plugin disable. Returns how many sessions were closed.
+     */
+    public int stopAll() {
+        int stopped = 0;
+        for (UUID id : active.keySet()) {
+            Active a = active.remove(id);
+            if (a == null) continue;
+            Player player = plugin.getServer().getPlayer(id);
+            if (player != null) {
+                try {
+                    PacketCapture.ejectRaw(player, a.sink());
+                } catch (RuntimeException ignored) {
+                    // player/channel may already be gone
+                }
+            }
+            a.clock().stop();
+            try {
+                a.recorder().stop();
+                plugin.getLogger().info("Saved replay on disable: " + a.output());
+            } catch (Exception e) {
+                plugin.getLogger().warning("Failed to write replay on disable for " + id
+                        + ": " + e.getMessage());
+            }
+            stopped++;
+        }
+        return stopped;
+    }
 
     @EventHandler
     public void onWorldChange(PlayerChangedWorldEvent event) {
