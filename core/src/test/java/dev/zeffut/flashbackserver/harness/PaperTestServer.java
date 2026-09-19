@@ -64,7 +64,12 @@ public final class PaperTestServer implements AutoCloseable {
 
         Path serverJar = PaperDownloader.resolve(baseDir.resolve("test-server"), project, version);
 
-        String configuredJavaHome = System.getenv("JAVA_HOME");
+        // Minecraft 26.1+ requires Java 25. Gradle itself runs on Java 21 for the
+        // remaining modules, so use the separately discovered Java 25 runtime for
+        // these server smokes instead of inheriting JAVA_HOME blindly.
+        String configuredJavaHome = version.startsWith("26.")
+                ? System.getenv("JAVA25_HOME")
+                : System.getenv("JAVA_HOME");
         Path serverJava = configuredJavaHome == null || configuredJavaHome.isBlank()
                 ? Path.of(System.getProperty("java.home"), "bin", "java")
                 : Path.of(configuredJavaHome, "bin", "java");
