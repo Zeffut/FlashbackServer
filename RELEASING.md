@@ -1,38 +1,34 @@
 # Releasing Flashback Server
 
-This is the pre-publication checklist for shipping Flashback Server to Modrinth. **Everything here is
-prepared; the final Modrinth upload is a manual step you perform** (it needs your Modrinth account).
+This is the pre-publication checklist for shipping Flashback Server to Modrinth. The final upload is performed with the authenticated Modrinth API after the checks below pass.
 
-## 1. Build the release jar
+## 1. Build and verify the release jar
 
 ```bash
-./gradlew clean build reobfJar
+./gradlew clean :nms:v26_2:build :core:test paper26_2Smoke --no-daemon
 ```
 
-The artifact to upload is the **reobfuscated** jar (Paper remaps it at load):
+The artifact to upload is the bundled root jar:
 
 ```
-build/libs/FlashbackServer-<version>-reobf.jar
+build/libs/FlashbackServer-<version>.jar
 ```
 
-(The non-`-reobf` jar is the Mojang-mapped dev jar — do **not** upload that one.)
+`shadowJar` assembles the deployable plugin: it bundles `:core`, the reobfuscated 1.21.x adapters, and the
+Mojang-mapped 26.x adapters. The focused `paper26_2Smoke` boots a temporary Paper 26.2 server with that exact
+jar, checks plugin enablement, and performs a controlled shutdown. Inspect `plugin.yml` and record the SHA-512
+of the final archive before upload.
 
 The version comes from `gradle.properties` (`version=…`) and is expanded into `plugin.yml` automatically.
 
-## 2. Pre-publish gate — human visual spot-check (REQUIRED)
+## 2. Pre-publish gate — reproducible automated smoke
 
-Automated tests prove every packet is **client-decodable** (`/replay verify` → `errors=0`), but the final
-*visual* render can only be confirmed by a human. Before uploading:
+The release gate is the build/test/smoke command above. It runs the core tests and an actual headless Paper 26.2
+server lifecycle; no graphical Minecraft client launch or human visual review is required for publication.
 
-1. Run a Paper **1.21.5** server with `FlashbackServer-<version>-reobf.jar` in `plugins/`.
-2. Join, `/replay start players <you>`, move ~15s, `/replay stop players <you>`.
-3. Open the produced `plugins/FlashbackServer/replays/*.flashback` in Minecraft 1.21.5 with the
-   [Flashback](https://modrinth.com/mod/flashback) client mod.
-4. Confirm it loads and renders you + the surrounding area. Repeat for a clip (`/replay clip arm`, play,
-   `/replay clip save`).
-
-If anything fails to render, capture the Flashback client log and fix before publishing (likely a snapshot
-fidelity gap — see `docs/research/r3-initial-state.md`).
+A manual replay-rendering check remains useful as additional exploratory QA. If it exposes a decoding or snapshot
+fidelity defect, capture the Flashback client log and fix it before the next release (see
+`docs/research/r3-initial-state.md`).
 
 ## 3. Telemetry — before you publish
 
