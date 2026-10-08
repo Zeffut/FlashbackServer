@@ -128,7 +128,7 @@ public final class RecordingManager implements Listener, RecordingService {
                 telemetry.capture("recording_failed", Map.of("reason_class", e.getClass().getSimpleName()));
                 future.completeExceptionally(e);
             } finally {
-                if (outputFile != null && !dest.equals(a.output())) {
+                if (outputFile != null && !ReplayFiles.sameFile(dest, a.output())) {
                     try { Files.deleteIfExists(a.output()); } catch (java.io.IOException ignored) {}
                 }
             }

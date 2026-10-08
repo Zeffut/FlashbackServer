@@ -26,6 +26,12 @@ class UniqueReplayPathTest {
         assertTrue(Files.exists(afterRestart));
     }
 
+    @Test void samePathRecognizesNormalizedAliases() throws Exception {
+        Path reserved = ReplayFiles.reserveUnique(dir, "replay", ".flashback");
+        Path alias = dir.resolve("nested/../replay.flashback");
+        assertTrue(ReplayFiles.sameFile(reserved, alias));
+    }
+
     @Test void concurrentReservationsNeverCollideOrOverwrite() throws Exception {
         Set<Path> paths = ConcurrentHashMap.newKeySet();
         var pool = Executors.newFixedThreadPool(12);

@@ -45,6 +45,19 @@ public final class ReplayFiles {
         }
     }
 
+    /** Compares paths by normalized location and, when possible, filesystem identity. */
+    public static boolean sameFile(Path left, Path right) {
+        Path normalizedLeft = left.toAbsolutePath().normalize();
+        Path normalizedRight = right.toAbsolutePath().normalize();
+        if (normalizedLeft.equals(normalizedRight)) return true;
+        try {
+            return Files.exists(normalizedLeft) && Files.exists(normalizedRight)
+                    && Files.isSameFile(normalizedLeft, normalizedRight);
+        } catch (java.io.IOException ignored) {
+            return false;
+        }
+    }
+
     /**
      * The Minecraft version written into the container's metadata.
      *
