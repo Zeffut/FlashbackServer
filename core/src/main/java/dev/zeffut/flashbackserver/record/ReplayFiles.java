@@ -2,6 +2,7 @@ package dev.zeffut.flashbackserver.record;
 
 import dev.zeffut.flashbackserver.format.*;
 import java.nio.file.Files;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Path;
 import java.util.List;
 import org.bukkit.Bukkit;
@@ -22,6 +23,39 @@ public final class ReplayFiles {
                 ? requested
                 : plugin.getDataFolder().toPath().resolve(requested);
         return p.normalize();
+    }
+
+    /** Atomically reserves a previously unused default output filename. */
+    public static Path reserveUnique(Path directory, String stem, String extension) throws java.io.IOException {
+        return reserveUnique(directory, stem, extension, 0);
+    }
+
+    /** Atomically reserves a previously unused default output filename with a numbered first candidate. */
+    public static Path reserveUnique(Path directory, String stem, String extension, int firstNumber)
+            throws java.io.IOException {
+        Files.createDirectories(directory);
+        for (long number = firstNumber; ; number++) {
+            String suffix = number == 0 ? "" : "-" + number;
+            Path candidate = directory.resolve(stem + suffix + extension);
+            try {
+                return Files.createFile(candidate);
+            } catch (FileAlreadyExistsException collision) {
+                // An existing replay may belong to a previous process: never replace it.
+            }
+        }
+    }
+
+    /** Compares paths by normalized location and, when possible, filesystem identity. */
+    public static boolean sameFile(Path left, Path right) {
+        Path normalizedLeft = left.toAbsolutePath().normalize();
+        Path normalizedRight = right.toAbsolutePath().normalize();
+        if (normalizedLeft.equals(normalizedRight)) return true;
+        try {
+            return Files.exists(normalizedLeft) && Files.exists(normalizedRight)
+                    && Files.isSameFile(normalizedLeft, normalizedRight);
+        } catch (java.io.IOException ignored) {
+            return false;
+        }
     }
 
     /**
