@@ -39,7 +39,13 @@ public final class RecordingManager implements Listener, RecordingService {
     public boolean start(Player player) {
         UUID id = player.getUniqueId();
         if (active.containsKey(id)) return false;
-        Path out = outputDir.resolve(player.getName() + "-" + id + ".flashback");
+        Path out;
+        try {
+            out = ReplayFiles.reserveUnique(outputDir, player.getName() + "-" + id, ".flashback");
+        } catch (java.io.IOException e) {
+            plugin.getLogger().warning("Could not reserve replay output for " + player.getName() + ": " + e.getMessage());
+            return false;
+        }
         var adapter = VersionAdapters.current();
         FlashbackRecorder recorder = new FlashbackRecorder(out, player.getName(),
             adapter.protocolVersion(), adapter.dataVersion());
@@ -58,7 +64,10 @@ public final class RecordingManager implements Listener, RecordingService {
         // the player's own, which is what moves the replay camera.
         EntityPositionTracker positions = new EntityPositionTracker();
 
-        if (active.putIfAbsent(id, new Active(recorder, clock, out, sink, positions)) != null) return false;
+        if (active.putIfAbsent(id, new Active(recorder, clock, out, sink, positions)) != null) {
+            try { Files.deleteIfExists(out); } catch (java.io.IOException ignored) {}
+            return false;
+        }
         PacketCapture.injectRaw(player, sink);
 
         clock.start(() -> {
@@ -112,9 +121,16 @@ public final class RecordingManager implements Listener, RecordingService {
                 telemetry.capture("recording_saved", Map.of("file_bytes", fileBytes));
                 future.complete(dest);
             } catch (Exception e) {
+                if (outputFile == null) {
+                    try { Files.deleteIfExists(a.output()); } catch (java.io.IOException ignored) {}
+                }
                 plugin.getLogger().warning("Failed to write replay: " + e.getMessage());
                 telemetry.capture("recording_failed", Map.of("reason_class", e.getClass().getSimpleName()));
                 future.completeExceptionally(e);
+            } finally {
+                if (outputFile != null && !dest.equals(a.output())) {
+                    try { Files.deleteIfExists(a.output()); } catch (java.io.IOException ignored) {}
+                }
             }
         });
         return future;

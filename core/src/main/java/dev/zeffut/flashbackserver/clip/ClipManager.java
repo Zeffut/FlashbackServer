@@ -25,7 +25,6 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class ClipManager implements Listener, ClipService {
@@ -34,7 +33,6 @@ public final class ClipManager implements Listener, ClipService {
     private final int windowSeconds;
     private final Telemetry telemetry;
     private final ConcurrentHashMap<UUID, Armed> armed = new ConcurrentHashMap<>();
-    private final AtomicInteger clipCounter = new AtomicInteger();
 
     private record Armed(
             ClipBuffer buffer,
@@ -162,9 +160,15 @@ public final class ClipManager implements Listener, ClipService {
         List<ReplayAction> stream = clip.stream();
         int ticks = clip.tickCount();
         String name = player.getName();
-        Path out = outputFile == null
-                ? outputDir.resolve(name + "-clip-" + clipCounter.incrementAndGet() + ".flashback")
-                : ReplayFiles.resolveOutput(plugin, outputFile);
+        Path out;
+        try {
+            out = outputFile == null
+                    ? ReplayFiles.reserveUnique(outputDir, name + "-clip", ".flashback", 1)
+                    : ReplayFiles.resolveOutput(plugin, outputFile);
+        } catch (java.io.IOException e) {
+            future.completeExceptionally(e);
+            return future;
+        }
         PlatformScheduler.async(plugin, () -> {
             try {
                 var adapter = VersionAdapters.current();
@@ -176,6 +180,9 @@ public final class ClipManager implements Listener, ClipService {
                 telemetry.capture("clip_saved", Map.of("file_bytes", fileBytes));
                 future.complete(out);
             } catch (Exception e) {
+                if (outputFile == null) {
+                    try { Files.deleteIfExists(out); } catch (java.io.IOException ignored) {}
+                }
                 plugin.getLogger().warning("Failed to write clip: " + e.getMessage());
                 telemetry.capture("clip_failed", Map.of("reason_class", e.getClass().getSimpleName()));
                 future.completeExceptionally(e);
