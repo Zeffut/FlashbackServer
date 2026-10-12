@@ -50,13 +50,18 @@ git tag -a v<version> -m "Flashback Server v<version>"
 git push origin v<version>
 ```
 
-(Optionally create a GitHub Release from the tag and attach the `-reobf.jar`.)
+(Optionally create a GitHub Release from the tag and attach the bundled root `FlashbackServer-<version>.jar`.)
 
 ## 5. Modrinth upload (manual — your account)
 
-Create the project on Modrinth using the metadata in [`docs/modrinth.md`](docs/modrinth.md):
+The existing project is [Flashback Server](https://modrinth.com/plugin/flashback-server), ID `VjvpZ4XD`,
+with source URL `https://github.com/Zeffut/FlashbackServer`. Do not create a duplicate or upload to the
+Flashback client mod. Read back `/v2/project/VjvpZ4XD` and its versions before uploading, and confirm
+that the version number is not already published. A successful smoke is evidence, not upload authorization.
+
+Use the metadata in [`docs/modrinth.md`](docs/modrinth.md):
 - Project type: **Plugin**; loaders: **Paper, Purpur, Folia**; MC versions: **1.21.5–26.3**.
-- Upload the `FlashbackServer-<version>-reobf.jar`, mark it as the primary file.
+- Upload `build/libs/FlashbackServer-<version>.jar`, the bundled root jar verified by the smoke; mark it as the primary file. Do not upload a module jar or a `-reobf.jar`.
 - Paste the summary/description/tags from `docs/modrinth.md`. Link the GitHub source. License: **MIT**.
 - Note the independence disclaimer (not affiliated with the Flashback mod).
 

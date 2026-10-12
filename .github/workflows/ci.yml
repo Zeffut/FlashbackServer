@@ -30,3 +30,14 @@ jobs:
           JAVA21_HOME: ${{ steps.jdk21.outputs.path }}
           JAVA25_HOME: ${{ steps.jdk25.outputs.path }}
         run: ./gradlew clean :nms:v26_2:build :nms:v26_3:build :core:test paper26_2Smoke paper26_3Smoke --no-daemon
+      - name: Preserve unit and smoke test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flashbackserver-test-results
+          path: |
+            core/build/test-results/test/
+            build/test-results/paper26_2Smoke/
+            build/test-results/paper26_3Smoke/
+          if-no-files-found: warn
+          retention-days: 7
