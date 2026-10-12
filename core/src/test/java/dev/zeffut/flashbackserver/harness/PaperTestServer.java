@@ -176,7 +176,28 @@ public final class PaperTestServer implements AutoCloseable {
     }
 
     @Override public void close() throws Exception {
-        sendCommand("stop");
-        if (!process.waitFor(60, TimeUnit.SECONDS)) process.destroyForcibly();
+        stopCleanly(process);
+    }
+
+    /** A forced kill or nonzero exit must fail a lifecycle smoke, not count as a clean stop. */
+    static void stopCleanly(Process process) throws IOException, InterruptedException {
+        try {
+            OutputStream input = process.getOutputStream();
+            input.write("stop\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            input.flush();
+            if (!process.waitFor(60, TimeUnit.SECONDS)) {
+                throw new IOException("Server did not stop cleanly within 60s");
+            }
+            if (process.exitValue() != 0) {
+                throw new IOException("Server exited with code " + process.exitValue());
+            }
+        } finally {
+            if (process.isAlive()) {
+                process.destroyForcibly();
+                if (!process.waitFor(10, TimeUnit.SECONDS)) {
+                    throw new IOException("Server remained alive after forced cleanup");
+                }
+            }
+        }
     }
 }
