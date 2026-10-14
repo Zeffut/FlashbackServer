@@ -37,12 +37,12 @@ public final class FlashbackServerPlugin extends JavaPlugin {
         try { java.nio.file.Files.createDirectories(clipsDir); } catch (java.io.IOException e) { throw new RuntimeException(e); }
 
         boolean telemetryEnabled = getConfig().getBoolean("telemetry.enabled", true);
-        String phHost = getConfig().getString("telemetry.posthog.host", "https://us.i.posthog.com");
+        String phHost = getConfig().getString("telemetry.posthog.host", "https://eu.i.posthog.com");
         String phKey = getConfig().getString("telemetry.posthog.project-key", "");
         Telemetry telemetry = new Telemetry(telemetryEnabled, phHost, phKey,
             Telemetry.loadOrCreateDistinctId(getDataFolder().toPath()), getPluginMeta().getVersion(), getLogger());
         if (telemetry.isEnabled()) {
-            getLogger().info("Anonymous telemetry is enabled (no player data). Disable it with telemetry.enabled: false in config.yml.");
+            getLogger().info("Pseudonymous telemetry is enabled (no player identifiers in payload). Disable it with telemetry.enabled: false in config.yml.");
         }
         telemetry.capture("plugin_enabled", java.util.Map.of(
             "platform", isFolia() ? "Folia" : "Paper",

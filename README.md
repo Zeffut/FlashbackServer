@@ -194,8 +194,11 @@ methods may be added in future releases.
 
 ## Telemetry
 
-Flashback Server collects **anonymous, opt-out** usage telemetry to help improve the plugin.
-**No player data (names, UUIDs, IPs) is ever collected.**
+Flashback Server collects **pseudonymous, opt-out** usage telemetry to help improve the plugin.
+No player names, player UUIDs or player IPs are deliberately added to the telemetry payload.
+PostHog nevertheless sees the server's network IP when a request is sent; `$ip: null` in a
+payload does not hide the source address. Server-side IP-derived geolocation may be possible;
+current project settings are not verified here.
 
 What is sent:
 
@@ -207,8 +210,10 @@ What is sent:
 | `clip_saved` | File size in bytes |
 | `clip_failed` | Exception class name only |
 
-All events are sent to [PostHog](https://posthog.com/) and include an anonymous server-scoped random UUID
-(stored in `plugins/FlashbackServer/.telemetry-id`) — it is not linked to any player or operator identity.
+All events are sent to [PostHog](https://posthog.com/) and include a persistent server-scoped random UUID
+(stored in `plugins/FlashbackServer/.telemetry-id`). It links events from the same server installation;
+it is not a player account UUID and does not guarantee anonymity. The shipped default ingestion host
+uses the EU region. Existing configurations are not rewritten or forced to opt in.
 
 **To disable**, set in `plugins/FlashbackServer/config.yml`:
 
