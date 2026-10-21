@@ -47,7 +47,8 @@ public class Telemetry {
 
     /**
      * Package-private: builds the JSON payload for a PostHog capture event.
-     * No PII — distinct_id is a server-scoped random UUID.
+     * Pseudonymous: distinct_id is a persistent server-scoped random UUID.
+     * The HTTP recipient can still see the server's network IP address.
      */
     String buildPayload(String event, Map<String, Object> props) {
         JsonObject properties = new JsonObject();
@@ -87,7 +88,7 @@ public class Telemetry {
     }
 
     /**
-     * Loads (or creates) an anonymous server UUID from {@code dataFolder/.telemetry-id}.
+     * Loads (or creates) a pseudonymous server UUID from {@code dataFolder/.telemetry-id}.
      * Swallows all IO errors, returning a fresh random UUID if persistence fails.
      */
     public static String loadOrCreateDistinctId(Path dataFolder) {
